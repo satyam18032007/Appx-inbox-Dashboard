@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppX Live Webinar Studio</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://meet.jit.si/external_api.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .appx-topbar { background-color: #1e1736; }
+  </style>
+</head>
+<body class="bg-slate-950 text-white min-h-screen flex flex-col">
+
+  <header class="appx-topbar border-b border-white/10 px-4 h-14 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-2.5 min-w-0">
+      <div class="w-8 h-8 rounded-lg bg-violet-300 text-[#1e1736] font-bold text-sm flex items-center justify-center shrink-0">Ax</div>
+      <div class="min-w-0">
+        <div id="wb-header-title" class="font-semibold text-sm truncate">AppX Live Webinar</div>
+        <div id="wb-header-host" class="text-[11px] text-violet-200 truncate">Loading webinar...</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 shrink-0">
+      <span id="wb-live-badge" class="hidden inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/20 text-rose-300 text-xs font-semibold border border-rose-500/30">
+        <span class="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span> LIVE
+      </span>
+      <a id="wb-cta-btn" href="#" target="_blank" rel="noopener noreferrer" class="hidden px-3.5 py-1.5 rounded-lg bg-indigo-500 hover:bg-indigo-600 text-white text-xs font-semibold transition">
+        Book Free Demo
+      </a>
+    </div>
+  </header>
+
+  <!-- Registration View -->
+  <main id="reg-view" class="flex-1 flex items-center justify-center p-4">
+    <div class="bg-slate-900 border border-slate-800 rounded-2xl max-w-lg w-full p-6 sm:p-8 shadow-2xl space-y-5">
+      <div class="space-y-2">
+        <span class="inline-block px-2.5 py-1 rounded-full bg-indigo-500/20 text-indigo-300 text-xs font-medium">AppX Live Session</span>
+        <h1 id="reg-title" class="text-2xl font-bold text-white">Loading Webinar...</h1>
+        <p id="reg-desc" class="text-sm text-slate-300"></p>
+        <div class="flex flex-wrap gap-3 text-xs text-slate-400 pt-1">
+          <span id="reg-host">Host: —</span>
+          <span id="reg-time">Schedule: —</span>
+          <span id="reg-count">0 registered</span>
+        </div>
+      </div>
+
+      <form id="reg-form" class="space-y-3 text-sm">
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Your Full Name *</label>
+          <input name="name" required placeholder="e.g. Rahul Sharma" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">WhatsApp Number *</label>
+          <input name="phone" required placeholder="e.g. 9811223344" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div>
+          <label class="block text-xs text-slate-400 mb-1">Email (optional)</label>
+          <input name="email" type="email" placeholder="you@email.com" class="w-full px-3.5 py-2.5 rounded-xl bg-slate-800 border border-slate-700 text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+        <div id="reg-error" class="hidden text-xs text-rose-400 bg-rose-950/60 border border-rose-800 rounded-lg px-3 py-2"></div>
+        <button type="submit" class="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition">
+          Register &amp; Join Live Webinar Room →
+        </button>
+      </form>
+    </div>
+  </main>
+
+  <!-- Live Video Room View (HD Video, Audio, Screen Share, Chat, Polls) -->
+  <section id="room-view" class="hidden flex-1 flex flex-col">
+    <div id="jitsi-container" class="flex-1 w-full min-h-[calc(100vh-56px)] bg-black"></div>
+  </section>
+
+  <script>
+    const params = new URLSearchParams(window.location.search);
+    const webinarId = params.get("id");
+    const isHost = params.get("host") === "1";
+    let currentWebinar = null;
+
+    function launchRoom(displayName) {
+      document.getElementById("reg-view").classList.add("hidden");
+      document.getElementById("room-view").classList.remove("hidden");
+      document.getElementById("wb-live-badge").classList.remove("hidden");
+
+      const domain = "meet.jit.si";
+      const options = {
+        roomName: currentWebinar.room_slug,
+        width: "100%",
+        height: "100%",
+        parentNode: document.getElementById("jitsi-container"),
+        userInfo: { displayName: displayName || (isHost ? currentWebinar.host_name : "Attendee") },
+        configOverwrite: {
+          prejoinPageEnabled: false,
+          startWithAudioMuted: !isHost,
+          startWithVideoMuted: !isHost,
+          disableDeepLinking: true
+        },
+        interfaceConfigOverwrite: {
+          SHOW_JITSI_WATERMARK: false,
+          SHOW_WATERMARK_FOR_GUESTS: false,
+          TOOLBAR_BUTTONS: [
+            "microphone", "camera", "desktop", "chat", "raisehand",
+            "participants-pane", "tileview", "fullscreen", "settings", "hangup"
+          ]
+        }
+      };
+      new JitsiMeetExternalAPI(domain, options);
+    }
+
+    async function loadWebinar() {
+      if (!webinarId) {
+        document.getElementById("reg-title").textContent = "Invalid Webinar Link";
+        return;
+      }
+      const res = await fetch(`/api/webinars?public_id=${encodeURIComponent(webinarId)}`);
+      const data = await res.json();
+      if (!res.ok || !data.webinar) {
+        document.getElementById("reg-title").textContent = "Webinar not found";
+        return;
+      }
+      currentWebinar = data.webinar;
+      document.title = `${currentWebinar.title} — AppX Webinar`;
+      document.getElementById("wb-header-title").textContent = currentWebinar.title;
+      document.getElementById("wb-header-host").textContent = `Host: ${currentWebinar.host_name || "AppX"} • ${currentWebinar.scheduled_at}`;
+      document.getElementById("reg-title").textContent = currentWebinar.title;
+      document.getElementById("reg-desc").textContent = currentWebinar.description || "Join this interactive live session with Q&A and screen sharing.";
+      document.getElementById("reg-host").textContent = `Host: ${currentWebinar.host_name || "AppX"}`;
+      document.getElementById("reg-time").textContent = `Schedule: ${currentWebinar.scheduled_at}`;
+      document.getElementById("reg-count").textContent = `${currentWebinar.registration_count || 0} registered`;
+
+      let offerUrl;
+      try { offerUrl = new URL(currentWebinar.cta_url); } catch {}
+      if (offerUrl?.protocol === "https:" || offerUrl?.protocol === "http:") {
+        const cta = document.getElementById("wb-cta-btn");
+        cta.textContent = currentWebinar.cta_text || "Book Free Demo";
+        cta.href = offerUrl.href;
+        cta.classList.remove("hidden");
+      }
+
+      if (isHost) {
+        launchRoom(`${currentWebinar.host_name || "Host"} (Host)`);
+      }
+    }
+
+    document.getElementById("reg-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const errEl = document.getElementById("reg-error");
+      errEl.classList.add("hidden");
+      const fd = Object.fromEntries(new FormData(e.target).entries());
+      try {
+        const res = await fetch("/api/webinars?action=register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ webinar_id: webinarId, ...fd })
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Registration failed");
+        launchRoom(fd.name);
+      } catch (err) {
+        errEl.textContent = err.message;
+        errEl.classList.remove("hidden");
+      }
+    });
+
+    loadWebinar();
+  </script>
+</body>
+</html>

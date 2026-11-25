@@ -1,0 +1,18 @@
+{
+  "name": "appx-inbox-vercel",
+  "version": "1.0.0",
+  "description": "Multi-user AppX WhatsApp Marketing & Lead CRM for Vercel + Supabase + Meta Cloud API",
+  "private": true,
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.4",
+    "exceljs": "4.4.0"
+  },
+  "engines": {
+    "node": ">=18.x"
+  },
+  "overrides": {
+    "exceljs": {
+      "uuid": "11.1.1"
+    }
+  }
+}
