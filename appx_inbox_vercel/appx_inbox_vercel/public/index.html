@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppX Inbox — WhatsApp Marketing & Lead CRM</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .appx-topbar { background-color: #1e1736; }
+    .appx-chat-bg { background-color: #f7f6fb; }
+    .appx-bubble-out { background-color: #e6e1f9; color: #1e1b4b; }
+    .sheet-cell-input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 6px;
+      width: 100%;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .sheet-cell-input:hover { border-color: #cbd5e1; background: #ffffff; }
+    .sheet-cell-input:focus { outline: none; border-color: #6366f1; background: #ffffff; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15); }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+
+  <!-- AUTH SCREEN (Multi-User Sign In / Create Account) -->
+  <div id="auth-screen" class="fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden">
+      <div class="appx-topbar px-6 py-5 flex items-center gap-3 text-white">
+        <div class="w-9 h-9 rounded-lg bg-violet-300 text-[#1e1736] font-bold flex items-center justify-center text-sm">Ax</div>
+        <div>
+          <div class="font-semibold text-base leading-tight">AppX Inbox</div>
+          <div class="text-xs text-violet-200">Multi-User WhatsApp Cloud API CRM</div>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-lg text-sm font-medium" id="auth-mode-tabs">
+          <button type="button" data-auth-mode="login" class="auth-mode-btn py-1.5 rounded-md bg-white text-slate-900 shadow-sm">Sign In</button>
+          <button type="button" data-auth-mode="register" class="auth-mode-btn py-1.5 rounded-md text-slate-600">Create Account</button>
+        </div>
+
+        <form id="auth-form" class="space-y-3 text-sm">
+          <div id="auth-name-wrap" class="hidden">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
+            <input name="name" placeholder="Your Name" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
+            <input name="email" type="email" required placeholder="you@company.com" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
+            <input name="password" type="password" required minlength="6" placeholder="Min 6 characters" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div id="auth-error" class="hidden text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+          <button id="auth-submit-btn" type="submit" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition">
+            Sign In
+          </button>
+        </form>
+
+        <div class="text-xs text-slate-500 bg-slate-50 border border-slate-200 rounded-lg p-3">
+          New user? Click <strong>Create Account</strong> to get your own private WhatsApp Inbox, Dashboard, Excel tracker, and personal Meta Webhook URL.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP SHELL -->
+  <div id="app-shell" class="hidden flex-1 flex flex-col min-h-screen">
+    <header class="appx-topbar text-white sticky top-0 z-30 shadow-sm">
+      <div class="max-w-[1600px] mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-violet-300 text-[#1e1736] flex items-center justify-center font-bold text-sm shrink-0">Ax</div>
+          <span class="font-semibold text-sm sm:text-base tracking-tight truncate">AppX Inbox</span>
+
+          <nav class="hidden sm:flex items-center gap-1 ml-4 bg-white/10 p-1 rounded-lg" id="main-nav">
+            <button data-tab="chat" class="nav-tab px-3 py-1 rounded-md text-xs font-medium bg-white text-[#1e1736] transition flex items-center gap-1.5">
+              <span>Inbox</span>
+              <span id="nav-unread-badge" class="hidden bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">0</span>
+            </button>
+            <button data-tab="dashboard" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Dashboard</button>
+            <button data-tab="sheet" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Excel Sheet</button>
+          </nav>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btn-bulk-open" class="hidden lg:inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs text-violet-100 transition">
+            ↑ Bulk CSV
+          </button>
+          <button id="btn-meta-setup" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs text-white transition">
+            <span id="meta-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span id="meta-status-label" class="hidden sm:inline">Connect WhatsApp API</span>
+          </button>
+          <span id="user-pill" class="hidden md:inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 text-[11px] text-violet-200"></span>
+          <button id="btn-sign-out" class="px-3 py-1.5 rounded-md hover:bg-white/10 text-xs font-medium text-violet-100 hover:text-white transition">Sign out</button>
+        </div>
+      </div>
+
+      <div class="sm:hidden flex items-center justify-around border-t border-white/10 px-2 py-1.5 text-xs" id="mobile-nav">
+        <button data-tab="chat" class="mob-tab px-3 py-1 rounded bg-white text-[#1e1736] font-medium">Inbox</button>
+        <button data-tab="dashboard" class="mob-tab px-3 py-1 rounded text-violet-200">Dashboard</button>
+        <button data-tab="sheet" class="mob-tab px-3 py-1 rounded text-violet-200">Excel Sheet</button>
+      </div>
+    </header>
+
+    <!-- Easy Setup Banner (shown automatically until user connects Meta Cloud API) -->
+    <div id="setup-banner" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2.5 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+      <div>
+        <strong>Setup Pending:</strong> Connect your Meta WhatsApp Cloud API (takes 2 mins) so incoming replies appear automatically and your replies reach customer WhatsApp.
+      </div>
+      <button id="btn-banner-setup" class="px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium">
+        Open 3-Step Setup →
+      </button>
+    </div>
+
+    <!-- VIEW 1: INBOX -->
+    <section id="view-chat" class="flex-1 flex flex-col lg:flex-row h-[calc(100vh-56px)] overflow-hidden bg-white">
+      <aside class="w-full lg:w-[360px] xl:w-[390px] border-r border-slate-200 flex flex-col h-full shrink-0 bg-white">
+        <div class="p-4 pb-3 space-y-3 border-b border-slate-200">
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold text-slate-900">Inbox</h1>
+            <button id="btn-inbox-add" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">+ Add Lead</button>
+          </div>
+          <input id="chat-search" type="text" placeholder="Search name, number or message" class="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
+
+          <div class="flex items-center justify-between text-xs pt-0.5">
+            <span class="font-semibold text-slate-800">Campaign replies</span>
+            <span id="sheet-synced-label" class="text-[11px] text-slate-400">Live synced</span>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5" id="reply-type-filters">
+            <button data-rtype="All" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">All chats <span id="cnt-all" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Interested" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Interested <span id="cnt-interested" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Free text" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Free text <span id="cnt-freetext" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Not interested" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Not interested <span id="cnt-notint" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Opted out" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Opted out <span id="cnt-optedout" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="No response" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">No response <span id="cnt-noresp" class="ml-0.5 font-semibold">0</span></button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1 pt-0.5 text-xs" id="ticket-state-filters">
+            <button data-tstate="All" class="tstate-tab px-2.5 py-1 rounded-md font-medium bg-indigo-50 text-indigo-700">All</button>
+            <button data-tstate="Unread" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Unread</button>
+            <button data-tstate="Pending" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Pending</button>
+            <button data-tstate="Resolved" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Resolved</button>
+            <button data-tstate="Failed" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Failed</button>
+          </div>
+        </div>
+
+        <div id="chat-lead-list" class="flex-1 overflow-y-auto divide-y divide-slate-100"></div>
+      </aside>
+
+      <!-- Center Chat Pane -->
+      <div class="flex-1 flex flex-col h-full min-w-0">
+        <div class="px-5 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div id="chat-active-avatar" class="w-9 h-9 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs flex items-center justify-center shrink-0">--</div>
+            <div class="min-w-0">
+              <div id="chat-active-name" class="font-semibold text-sm text-slate-900 truncate">No conversation selected</div>
+              <div id="chat-active-meta" class="text-xs text-slate-500 truncate">Incoming WhatsApp messages will appear automatically</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span id="chat-active-status-pill" class="hidden text-xs px-2.5 py-1 rounded-full font-medium"></span>
+            <button id="btn-toggle-details" class="hidden px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-700 transition">Details</button>
+          </div>
+        </div>
+
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-5 space-y-3 appx-chat-bg">
+          <div class="text-center text-xs text-slate-500 bg-white rounded-xl py-6 px-5 max-w-md mx-auto mt-12 border border-slate-200 space-y-2">
+            <div class="font-semibold text-slate-800 text-sm">Your Inbox is ready!</div>
+            <p>Connect your Meta WhatsApp Cloud API or import your bulk campaign CSV. Any customer reply on WhatsApp will automatically show up here.</p>
+          </div>
+        </div>
+
+        <div id="chat-composer" class="hidden border-t border-slate-200 bg-white px-5 py-3 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="text-slate-500 flex items-center gap-1.5">
+              <span id="window-dot" class="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span id="reply-window-label">Reply window active (24h after customer message)</span>
+            </div>
+            <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg" id="composer-mode-toggle">
+              <button type="button" data-cmode="reply" class="cmode-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 font-medium shadow-sm">Reply</button>
+              <button type="button" data-cmode="template" class="cmode-btn px-2.5 py-1 rounded-md text-slate-600 font-medium">Template</button>
+            </div>
+          </div>
+
+          <div id="template-picker-bar" class="hidden flex flex-wrap items-center gap-2 text-xs bg-indigo-50/70 border border-indigo-100 rounded-lg px-3 py-2">
+            <span class="font-medium text-indigo-800">Approved Meta Template Name:</span>
+            <input id="template-name-input" placeholder="e.g. appx or hello_world" value="appx" class="flex-1 min-w-[140px] px-2.5 py-1 rounded border border-indigo-200 bg-white text-slate-800" />
+            <input id="template-lang-input" placeholder="en" value="en" class="w-16 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-800" />
+          </div>
+
+          <form id="chat-send-form" class="flex items-center gap-2.5">
+            <input id="chat-input" type="text" placeholder="Write a reply..." class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition shrink-0 flex items-center gap-1.5 shadow-sm">
+              <span>Send</span><span>↗</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Right Lead Details Drawer -->
+      <aside id="details-drawer" class="hidden w-full lg:w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto space-y-4 shrink-0">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+          <h3 class="font-semibold text-sm text-slate-900">Lead & Demo Details</h3>
+          <button id="btn-close-details" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+        </div>
+        <div class="space-y-3 text-xs">
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Sales Status</label>
+            <select id="det-status" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+              <option value="No Response">No Response</option>
+              <option value="Interested">Interested</option>
+              <option value="Demo Booked">Demo Booked</option>
+              <option value="Demo Done">Demo Done</option>
+              <option value="Follow-up Due">Follow-up Due</option>
+              <option value="Sold">Sold</option>
+              <option value="Not Interested">Not Interested</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Inbox State</label>
+            <select id="det-ticket-state" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+              <option value="Pending">Pending</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-500 font-medium mb-1">Demo Date</label>
+              <input id="det-demo-date" type="date" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" />
+            </div>
+            <div>
+              <label class="block text-slate-500 font-medium mb-1">Follow-up Date</label>
+              <input id="det-followup-date" type="date" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Deal Value (₹)</label>
+            <input id="det-deal-value" type="number" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Notes</label>
+            <textarea id="det-notes" rows="3" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"></textarea>
+          </div>
+          <button id="btn-save-details" class="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition">Save Changes</button>
+        </div>
+      </aside>
+    </section>
+
+    <!-- VIEW 2: DASHBOARD -->
+    <section id="view-dashboard" class="hidden max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900">AppX Sales & Demo Dashboard</h1>
+          <p class="text-sm text-slate-500">Real-time metrics from your connected WhatsApp campaigns and sales pipeline.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-dash-bulk" class="px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-sm font-medium">↑ Import Bulk CSV</button>
+          <button id="btn-dash-add-lead" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium">+ Add Lead</button>
+          <button id="btn-dash-export" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">Download Excel (.xlsx)</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 uppercase">Total Leads</div>
+          <div id="kpi-total" class="text-2xl font-bold text-slate-900 mt-1">0</div>
+          <div class="text-xs text-slate-500 mt-1">Campaign contacts</div>
+        </div>
+        <div class="bg-white rounded-xl border border-purple-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-purple-600 uppercase">Responded</div>
+          <div id="kpi-responded" class="text-2xl font-bold text-purple-700 mt-1">0</div>
+          <div id="kpi-response-rate" class="text-xs text-slate-500 mt-1">0% reply rate</div>
+        </div>
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-slate-500 uppercase">No Response</div>
+          <div id="kpi-no-response" class="text-2xl font-bold text-slate-700 mt-1">0</div>
+          <div class="text-xs text-slate-500 mt-1">Not replied yet</div>
+        </div>
+        <div class="bg-white rounded-xl border border-blue-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-blue-600 uppercase">Demos</div>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="kpi-demo-booked" class="text-2xl font-bold text-blue-700">0</span>
+            <span class="text-xs text-slate-400">/</span>
+            <span id="kpi-demo-done" class="text-lg font-semibold text-indigo-700">0</span>
+          </div>
+          <div class="text-xs text-slate-500 mt-1">Booked / Done</div>
+        </div>
+        <div class="bg-white rounded-xl border border-amber-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-amber-600 uppercase">Follow-up Due</div>
+          <div id="kpi-followup" class="text-2xl font-bold text-amber-700 mt-1">0</div>
+          <div class="text-xs text-slate-500 mt-1">Action needed today</div>
+        </div>
+        <div class="bg-emerald-50 rounded-xl border border-emerald-200 p-4 shadow-sm">
+          <div class="text-xs font-medium text-emerald-700 uppercase">App Sold</div>
+          <div class="flex items-baseline gap-2 mt-1">
+            <span id="kpi-sold" class="text-2xl font-bold text-emerald-800">0</span>
+            <span id="kpi-conv" class="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">0%</span>
+          </div>
+          <div id="kpi-revenue" class="text-xs font-medium text-emerald-700 mt-1">₹0 revenue</div>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-slate-900 mb-3">Campaign Funnel</h2>
+          <div class="relative h-64"><canvas id="pipeline-chart"></canvas></div>
+        </div>
+        <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <div>
+              <h2 class="text-base font-semibold text-slate-900">Follow-up & Demo Queue</h2>
+              <p class="text-xs text-slate-500">Leads requiring demo, follow-up, or unread reply</p>
+            </div>
+            <button id="btn-go-sheet" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">Open Excel Sheet →</button>
+          </div>
+          <div id="followup-queue" class="divide-y divide-slate-100 overflow-y-auto max-h-64 pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: EXCEL SHEET -->
+    <section id="view-sheet" class="hidden max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl font-bold text-slate-900">Excel-Style Lead & Response Sheet</h1>
+          <p class="text-sm text-slate-500">Edit any cell inline. Download a formatted `.xlsx` workbook anytime.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="sheet-search" type="text" placeholder="Search name, phone..." class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm w-48" />
+          <select id="sheet-filter-status" class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+            <option value="All">All Statuses</option>
+            <option value="No Response">No Response</option>
+            <option value="Interested">Interested</option>
+            <option value="Demo Booked">Demo Booked</option>
+            <option value="Demo Done">Demo Done</option>
+            <option value="Follow-up Due">Follow-up Due</option>
+            <option value="Sold">Sold</option>
+            <option value="Not Interested">Not Interested</option>
+          </select>
+          <button id="btn-sheet-bulk" class="px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-sm font-medium">↑ Bulk CSV</button>
+          <button id="btn-sheet-export" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">Download Excel (.xlsx)</button>
+        </div>
+      </div>
+
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                <th class="py-3 px-3 min-w-[155px]">Lead & Business</th>
+                <th class="py-3 px-3 min-w-[125px]">WhatsApp</th>
+                <th class="py-3 px-3 min-w-[105px]">Reply Tag</th>
+                <th class="py-3 px-3 min-w-[180px]">Last Message</th>
+                <th class="py-3 px-3 min-w-[140px]">Sales Status</th>
+                <th class="py-3 px-3 min-w-[130px]">Demo Date</th>
+                <th class="py-3 px-3 min-w-[130px]">Follow-up</th>
+                <th class="py-3 px-3 min-w-[90px]">Value (₹)</th>
+                <th class="py-3 px-3 min-w-[160px]">Notes</th>
+                <th class="py-3 px-3 text-right min-w-[95px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sheet-tbody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL: 3-Step Guided Meta WhatsApp Cloud API Setup -->
+  <div id="modal-meta-setup" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div>
+          <h3 class="font-semibold text-base text-slate-900">Connect Your WhatsApp Business (3 Easy Steps)</h3>
+          <p class="text-xs text-slate-500">Every user connects their own Meta WhatsApp Cloud API in 2 minutes.</p>
+        </div>
+        <button data-close-modal="modal-meta-setup" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+      </div>
+
+      <!-- Step 1 -->
+      <div class="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 space-y-2 text-xs">
+        <div class="font-semibold text-indigo-950">Step 1: Copy Your Personal Webhook URL &amp; Verify Token</div>
+        <p class="text-indigo-800">Go to <strong>developers.facebook.com</strong> → Your App → <strong>WhatsApp → Configuration → Webhook → Edit</strong>, paste both below, click Verify, then subscribe to <strong>messages</strong>:</p>
+        <div class="flex items-center gap-2">
+          <input id="setup-webhook-url" readonly class="flex-1 px-2.5 py-1.5 rounded bg-white border border-indigo-200 font-mono text-[11px]" />
+          <button type="button" data-copy="setup-webhook-url" class="px-2.5 py-1.5 rounded bg-indigo-600 text-white font-medium">Copy URL</button>
+        </div>
+        <div class="flex items-center gap-2">
+          <input id="setup-verify-token" readonly class="flex-1 px-2.5 py-1.5 rounded bg-white border border-indigo-200 font-mono text-[11px]" />
+          <button type="button" data-copy="setup-verify-token" class="px-2.5 py-1.5 rounded bg-indigo-600 text-white font-medium">Copy Token</button>
+        </div>
+      </div>
+
+      <!-- Step 2 & 3 -->
+      <form id="form-meta-settings" class="space-y-3 text-xs">
+        <div class="font-semibold text-slate-900">Step 2 &amp; 3: Paste Your Meta API Keys &amp; Verify Live</div>
+        <p class="text-slate-500">Find these in Meta Developers → <strong>WhatsApp → API Setup</strong> (use a Permanent System User Token from Business Settings for 24/7 operation).</p>
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">Meta WhatsApp Access Token *</label>
+          <input id="meta-token-input" name="whatsapp_token" type="password" required placeholder="EAA..." class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        </div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Phone Number ID *</label>
+            <input id="meta-pid-input" name="phone_number_id" required placeholder="e.g. 102938475610293" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Graph API Version</label>
+            <input id="meta-ver-input" name="graph_version" value="v21.0" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          </div>
+        </div>
+        <div id="meta-error" class="hidden text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" data-close-modal="modal-meta-setup" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Close</button>
+          <button id="btn-save-meta" type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium">Save &amp; Verify Connection</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Bulk CSV Import + Optional Meta Template Blast -->
+  <div id="modal-bulk-import" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900">Import Bulk Campaign CSV</h3>
+        <button data-close-modal="modal-bulk-import" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+      </div>
+      <p class="text-xs text-slate-500">Upload a CSV with columns <code>name, phone, business_name</code>. Contacts start in <strong>No response</strong> and auto-move when they reply on WhatsApp.</p>
+      <form id="form-bulk-import" class="space-y-3 text-xs">
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">Campaign Label</label>
+          <input name="campaign_name" value="appx (Marketing)" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" />
+        </div>
+        <div>
+          <label class="block font-medium text-slate-700 mb-1">CSV File *</label>
+          <input type="file" name="file" accept=".csv" required class="w-full text-xs text-slate-600" />
+        </div>
+        <label class="flex items-center gap-2 pt-1 cursor-pointer">
+          <input id="bulk-send-toggle" type="checkbox" name="send_template" class="rounded border-slate-300 text-indigo-600" />
+          <span class="text-slate-700 font-medium">Also send Meta Template to these contacts now</span>
+        </label>
+        <div id="bulk-tpl-fields" class="hidden grid grid-cols-3 gap-2">
+          <input name="template_name" placeholder="Template name (e.g. appx)" class="col-span-2 px-2.5 py-1.5 rounded-lg border border-slate-300" />
+          <input name="template_lang" value="en" placeholder="Lang" class="px-2.5 py-1.5 rounded-lg border border-slate-300" />
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" data-close-modal="modal-bulk-import" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Import Contacts</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Add Single Lead -->
+  <div id="modal-add-lead" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between">
+        <h3 class="font-semibold text-slate-900">Add Lead</h3>
+        <button data-close-modal="modal-add-lead" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+      </div>
+      <form id="form-add-lead" class="space-y-3 text-sm">
+        <input name="name" required placeholder="Full Name *" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <input name="phone" required placeholder="WhatsApp Phone (e.g. 919811223344) *" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <input name="business_name" placeholder="Business / Academy" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <div class="grid grid-cols-2 gap-2">
+          <select name="status" class="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+            <option value="No Response">No Response</option>
+            <option value="Interested">Interested</option>
+            <option value="Demo Booked">Demo Booked</option>
+            <option value="Demo Done">Demo Done</option>
+            <option value="Follow-up Due">Follow-up Due</option>
+            <option value="Sold">Sold</option>
+          </select>
+          <input type="number" name="deal_value" value="0" placeholder="Deal ₹" class="px-3 py-2 rounded-lg border border-slate-300" />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" data-close-modal="modal-add-lead" class="px-4 py-2 rounded-lg border border-slate-300">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Save Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-[#1e1736] text-white text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-lg"></div>
+
+  <script>
+    const TODAY = new Date().toISOString().slice(0, 10);
+    const AVATAR_COLORS = ["bg-emerald-100 text-emerald-800", "bg-orange-100 text-orange-800", "bg-sky-100 text-sky-800", "bg-violet-100 text-violet-800", "bg-amber-100 text-amber-800", "bg-rose-100 text-rose-800"];
+    const STATUS_BADGES = {
+      "No Response": "bg-slate-100 text-slate-700",
+      "Interested": "bg-purple-100 text-purple-700",
+      "Demo Booked": "bg-blue-100 text-blue-700",
+      "Demo Done": "bg-indigo-100 text-indigo-700",
+      "Follow-up Due": "bg-amber-100 text-amber-800",
+      "Sold": "bg-emerald-100 text-emerald-800",
+      "Not Interested": "bg-rose-100 text-rose-700"
+    };
+
+    const state = {
+      token: null,
+      user: null,
+      authMode: "login",
+      leads: [],
+      messagesByLead: {},
+      activeTab: "chat",
+      activeLeadId: null,
+      replyTypeFilter: "All",
+      ticketStateFilter: "All",
+      composerMode: "reply",
+      chartInstance: null
+    };
+
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.remove("hidden");
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.add("hidden"), 3000);
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+    }
+
+    function fmtTime(iso) {
+      if (!iso) return "";
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return String(iso);
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+    }
+
+    function avatarDigits(phone) {
+      const d = String(phone || "").replace(/\D/g, "");
+      return d.slice(-2) || "AX";
+    }
+
+    function avatarColor(id) {
+      return AVATAR_COLORS[Number(id || 0) % AVATAR_COLORS.length];
+    }
+
+    async function apiFetch(url, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (options.body && typeof options.body === "string") headers["Content-Type"] = "application/json";
+      if (state.token) headers["Authorization"] = `Bearer ${state.token}`;
+      const res = await fetch(url, { ...options, headers });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && !url.includes("/api/auth")) {
+        signOutLocal();
+        throw new Error("Session expired. Please sign in again.");
+      }
+      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      return data;
+    }
+
+    function signOutLocal() {
+      state.token = null;
+      state.user = null;
+      state.leads = [];
+      state.activeLeadId = null;
+      try { localStorage.removeItem("appx_vercel_token"); } catch (e) {}
+      document.getElementById("app-shell").classList.add("hidden");
+      document.getElementById("auth-screen").classList.remove("hidden");
+    }
+
+    function syncUserHeader() {
+      if (!state.user) return;
+      document.getElementById("auth-screen").classList.add("hidden");
+      document.getElementById("app-shell").classList.remove("hidden");
+      document.getElementById("user-pill").textContent = state.user.email;
+      document.getElementById("setup-webhook-url").value = `${window.location.origin}${state.user.webhook_path}`;
+      document.getElementById("setup-verify-token").value = state.user.verify_token;
+      document.getElementById("meta-pid-input").value = state.user.phone_number_id || "";
+      document.getElementById("meta-ver-input").value = state.user.graph_version || "v21.0";
+
+      const dot = document.getElementById("meta-status-dot");
+      const label = document.getElementById("meta-status-label");
+      const banner = document.getElementById("setup-banner");
+      if (state.user.meta_configured) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+        label.textContent = state.user.connected_phone ? `Connected (${state.user.connected_phone})` : "WhatsApp Connected";
+        banner.classList.add("hidden");
+      } else {
+        dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        label.textContent = "Connect WhatsApp API";
+        banner.classList.remove("hidden");
+      }
+    }
+
+    async function refreshData() {
+      const [{ user }, { leads }] = await Promise.all([
+        apiFetch("/api/auth"),
+        apiFetch("/api/leads")
+      ]);
+      state.user = user;
+      state.leads = leads || [];
+      syncUserHeader();
+      document.getElementById("sheet-synced-label").textContent = `Synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      renderChatList();
+      if (state.activeTab === "dashboard") renderDashboard();
+      if (state.activeTab === "sheet") renderSheet();
+    }
+
+    function renderChatList() {
+      const leads = state.leads;
+      document.getElementById("cnt-all").textContent = leads.length;
+      document.getElementById("cnt-interested").textContent = leads.filter(l => l.reply_type === "Interested").length;
+      document.getElementById("cnt-freetext").textContent = leads.filter(l => l.reply_type === "Free text").length;
+      document.getElementById("cnt-notint").textContent = leads.filter(l => l.reply_type === "Not interested").length;
+      document.getElementById("cnt-optedout").textContent = leads.filter(l => l.reply_type === "Opted out").length;
+      document.getElementById("cnt-noresp").textContent = leads.filter(l => l.reply_type === "No response" || !l.has_responded).length;
+
+      const unreadTotal = leads.reduce((s, l) => s + Number(l.unread_count || 0), 0);
+      const badge = document.getElementById("nav-unread-badge");
+      badge.textContent = unreadTotal;
+      badge.classList.toggle("hidden", unreadTotal === 0);
+
+      const q = document.getElementById("chat-search").value.toLowerCase().trim();
+      const filtered = leads.filter(l => {
+        if (state.replyTypeFilter !== "All" && l.reply_type !== state.replyTypeFilter) return false;
+        if (state.ticketStateFilter === "Unread" && !(l.unread_count > 0)) return false;
+        if (["Pending", "Resolved", "Failed"].includes(state.ticketStateFilter) && l.ticket_state !== state.ticketStateFilter) return false;
+        if (!q) return true;
+        return l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.last_message || "").toLowerCase().includes(q);
+      });
+
+      const listEl = document.getElementById("chat-lead-list");
+      if (!filtered.length) {
+        listEl.innerHTML = `<div class="p-8 text-center text-xs text-slate-400">No conversations yet. Import a CSV or wait for incoming WhatsApp replies.</div>`;
+        return;
+      }
+
+      listEl.innerHTML = filtered.map(l => `
+        <button data-action="select-chat" data-id="${l.id}" class="w-full text-left px-4 py-3 hover:bg-slate-50 transition flex items-start gap-3 ${l.id === state.activeLeadId ? "bg-indigo-50/70" : ""}">
+          <div class="w-9 h-9 rounded-full ${avatarColor(l.id)} font-semibold text-xs flex items-center justify-center shrink-0 mt-0.5">${escapeHtml(avatarDigits(l.phone))}</div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center justify-between gap-2">
+              <span class="font-semibold text-sm text-slate-900 truncate">${escapeHtml(l.name)}</span>
+              <span class="text-[11px] text-slate-400 shrink-0">${escapeHtml(fmtTime(l.updated_at))}</span>
+            </div>
+            <div class="text-xs text-slate-500 truncate mt-0.5">${escapeHtml(l.last_message || "No reply yet")}</div>
+            <div class="flex items-center justify-between mt-1.5">
+              <span class="text-[10px] font-medium px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">${escapeHtml(l.reply_type || "No response")}</span>
+              ${l.unread_count > 0 ? `<span class="bg-indigo-600 text-white text-[10px] font-bold px-1.5 py-0.2 rounded-full">${l.unread_count}</span>` : ""}
+            </div>
+          </div>
+        </button>
+      `).join("");
+    }
+
+    async function openChatThread(leadId) {
+      state.activeLeadId = leadId;
+      const lead = state.leads.find(l => l.id === leadId);
+      if (!lead) return;
+
+      const av = document.getElementById("chat-active-avatar");
+      av.textContent = avatarDigits(lead.phone);
+      av.className = `w-9 h-9 rounded-full ${avatarColor(lead.id)} font-semibold text-xs flex items-center justify-center shrink-0`;
+      document.getElementById("chat-active-name").textContent = lead.name;
+      document.getElementById("chat-active-meta").textContent = `+${lead.phone}${lead.business_name ? " • " + lead.business_name : ""}`;
+
+      const pill = document.getElementById("chat-active-status-pill");
+      pill.textContent = lead.status;
+      pill.className = `text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_BADGES[lead.status] || "bg-slate-100"}`;
+      pill.classList.remove("hidden");
+      document.getElementById("btn-toggle-details").classList.remove("hidden");
+      document.getElementById("chat-composer").classList.remove("hidden");
+
+      document.getElementById("det-status").value = lead.status;
+      document.getElementById("det-ticket-state").value = lead.ticket_state || "Pending";
+      document.getElementById("det-demo-date").value = lead.demo_date || "";
+      document.getElementById("det-followup-date").value = lead.followup_date || "";
+      document.getElementById("det-deal-value").value = Number(lead.deal_value || 0);
+      document.getElementById("det-notes").value = lead.notes || "";
+
+      const { messages } = await apiFetch(`/api/messages?lead_id=${leadId}`);
+      state.messagesByLead[leadId] = messages || [];
+      lead.unread_count = 0;
+
+      const box = document.getElementById("chat-messages");
+      if (!messages.length) {
+        box.innerHTML = `<div class="text-center text-xs text-slate-400 mt-10">No messages yet. Switch to Template mode to start the conversation on WhatsApp.</div>`;
+      } else {
+        box.innerHTML = messages.map(m => {
+          const isOut = m.direction === "outgoing";
+          return `
+            <div class="flex ${isOut ? "justify-end" : "justify-start"}">
+              <div class="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isOut ? "appx-bubble-out rounded-br-sm" : "bg-white border border-slate-200 text-slate-900 rounded-bl-sm"}">
+                <div class="whitespace-pre-wrap">${escapeHtml(m.body)}</div>
+                <div class="text-[10px] ${isOut ? "text-indigo-900/60 text-right" : "text-slate-400"} mt-1">
+                  ${escapeHtml(fmtTime(m.created_at))} ${isOut ? `· ${escapeHtml(m.delivery_status || "Sent")}` : ""}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("");
+        box.scrollTop = box.scrollHeight;
+      }
+      renderChatList();
+    }
+
+    function renderDashboard() {
+      const leads = state.leads;
+      const total = leads.length;
+      const responded = leads.filter(l => l.has_responded).length;
+      const sold = leads.filter(l => l.status === "Sold").length;
+      const demoBooked = leads.filter(l => l.status === "Demo Booked").length;
+      const demoDone = leads.filter(l => l.status === "Demo Done").length;
+      const followup = leads.filter(l => l.status === "Follow-up Due" || (l.followup_date && l.followup_date <= TODAY && l.status !== "Sold" && l.status !== "Not Interested")).length;
+      const revenue = leads.filter(l => l.status === "Sold").reduce((s, l) => s + Number(l.deal_value || 0), 0);
+
+      document.getElementById("kpi-total").textContent = total;
+      document.getElementById("kpi-responded").textContent = responded;
+      document.getElementById("kpi-response-rate").textContent = `${total ? Math.round((responded / total) * 100) : 0}% reply rate`;
+      document.getElementById("kpi-no-response").textContent = total - responded;
+      document.getElementById("kpi-demo-booked").textContent = demoBooked;
+      document.getElementById("kpi-demo-done").textContent = demoDone;
+      document.getElementById("kpi-followup").textContent = followup;
+      document.getElementById("kpi-sold").textContent = sold;
+      document.getElementById("kpi-conv").textContent = `${total ? ((sold / total) * 100).toFixed(1) : "0.0"}%`;
+      document.getElementById("kpi-revenue").textContent = `₹${revenue.toLocaleString("en-IN")} revenue`;
+
+      const stages = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold"];
+      const ctx = document.getElementById("pipeline-chart").getContext("2d");
+      if (state.chartInstance) state.chartInstance.destroy();
+      state.chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: {
+          labels: stages,
+          datasets: [{ data: stages.map(st => leads.filter(l => l.status === st).length), backgroundColor: ["#94a3b8", "#a855f7", "#3b82f6", "#6366f1", "#f59e0b", "#10b981"], borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } }
+      });
+
+      const queue = leads.filter(l => l.has_responded && (l.status === "Demo Booked" || l.status === "Follow-up Due" || l.unread_count > 0));
+      document.getElementById("followup-queue").innerHTML = queue.length
+        ? queue.map(l => `
+          <div class="py-3 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <span class="font-medium text-sm text-slate-900 truncate">${escapeHtml(l.name)}</span>
+                <span class="text-[11px] px-2 py-0.5 rounded-full ${STATUS_BADGES[l.status] || ""}">${escapeHtml(l.status)}</span>
+              </div>
+              <div class="text-xs text-slate-500 truncate mt-0.5">${escapeHtml(l.last_message || l.notes || "")}</div>
+            </div>
+            <button data-action="open-chat" data-id="${l.id}" class="px-3 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium shrink-0">Reply</button>
+          </div>
+        `).join("")
+        : `<div class="py-8 text-center text-sm text-slate-400">No pending follow-ups right now.</div>`;
+    }
+
+    function renderSheet() {
+      const q = document.getElementById("sheet-search").value.toLowerCase().trim();
+      const stFilter = document.getElementById("sheet-filter-status").value;
+      const filtered = state.leads.filter(l => {
+        if (stFilter !== "All" && l.status !== stFilter) return false;
+        return !q || l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.business_name || "").toLowerCase().includes(q);
+      });
+      const opts = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold", "Not Interested"];
+      document.getElementById("sheet-tbody").innerHTML = filtered.length
+        ? filtered.map(l => `
+          <tr class="hover:bg-slate-50" data-lead-id="${l.id}">
+            <td class="py-2 px-3"><div class="font-medium text-slate-900">${escapeHtml(l.name)}</div><div class="text-xs text-slate-500">${escapeHtml(l.business_name)}</div></td>
+            <td class="py-2 px-3 font-mono text-xs">+${escapeHtml(l.phone)}</td>
+            <td class="py-2 px-3"><span class="text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">${escapeHtml(l.reply_type)}</span></td>
+            <td class="py-2 px-3 text-xs text-slate-600 truncate max-w-[180px]">${escapeHtml(l.last_message || "—")}</td>
+            <td class="py-2 px-3"><select data-field="status" class="sheet-cell-input text-xs font-medium ${STATUS_BADGES[l.status] || ""}">${opts.map(o => `<option value="${o}" ${l.status === o ? "selected" : ""}>${o}</option>`).join("")}</select></td>
+            <td class="py-2 px-3"><input type="date" data-field="demo_date" value="${escapeHtml(l.demo_date || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3"><input type="date" data-field="followup_date" value="${escapeHtml(l.followup_date || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3"><input type="number" data-field="deal_value" value="${Number(l.deal_value || 0)}" class="sheet-cell-input text-xs text-right" /></td>
+            <td class="py-2 px-3"><input type="text" data-field="notes" value="${escapeHtml(l.notes || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3 text-right whitespace-nowrap space-x-1">
+              <button data-action="open-chat" data-id="${l.id}" class="px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-medium">Chat</button>
+              <button data-action="delete-lead" data-id="${l.id}" class="px-2 py-1 rounded bg-rose-50 text-rose-700 text-xs font-medium">Del</button>
+            </td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="10" class="py-8 text-center text-slate-400">No leads yet. Import your bulk campaign CSV or connect Meta Webhook.</td></tr>`;
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      ["chat", "dashboard", "sheet"].forEach(t => document.getElementById(`view-${t}`).classList.toggle("hidden", t !== tab));
+      document.querySelectorAll(".nav-tab").forEach(btn => {
+        btn.className = btn.dataset.tab === tab
+          ? "nav-tab px-3 py-1 rounded-md text-xs font-medium bg-white text-[#1e1736] transition flex items-center gap-1.5"
+          : "nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition flex items-center gap-1.5";
+      });
+      document.querySelectorAll(".mob-tab").forEach(btn => {
+        btn.className = btn.dataset.tab === tab ? "mob-tab px-3 py-1 rounded bg-white text-[#1e1736] font-medium" : "mob-tab px-3 py-1 rounded text-violet-200";
+      });
+      if (tab === "dashboard") renderDashboard();
+      if (tab === "sheet") renderSheet();
+      if (tab === "chat") renderChatList();
+    }
+
+    function parseCsvText(text) {
+      const lines = text.split(/\r?\n/).filter(l => l.trim());
+      if (lines.length < 2) return [];
+      const headers = lines[0].split(",").map(h => h.trim().toLowerCase().replace(/^"|"$/g, ""));
+      return lines.slice(1).map(line => {
+        const cols = line.split(",").map(c => c.trim().replace(/^"|"$/g, ""));
+        const obj = {};
+        headers.forEach((h, i) => obj[h] = cols[i] || "");
+        return obj;
+      });
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+    function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+    function bindEvents() {
+      document.getElementById("auth-mode-tabs").addEventListener("click", e => {
+        const btn = e.target.closest(".auth-mode-btn");
+        if (!btn) return;
+        state.authMode = btn.dataset.authMode;
+        document.querySelectorAll(".auth-mode-btn").forEach(b => {
+          b.className = b.dataset.authMode === state.authMode ? "auth-mode-btn py-1.5 rounded-md bg-white text-slate-900 shadow-sm" : "auth-mode-btn py-1.5 rounded-md text-slate-600";
+        });
+        document.getElementById("auth-name-wrap").classList.toggle("hidden", state.authMode !== "register");
+        document.getElementById("auth-submit-btn").textContent = state.authMode === "register" ? "Create Private Account" : "Sign In";
+      });
+
+      document.getElementById("auth-form").addEventListener("submit", async e => {
+        e.preventDefault();
+        const errEl = document.getElementById("auth-error");
+        errEl.classList.add("hidden");
+        const fd = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          const data = await apiFetch(`/api/auth?action=${state.authMode}`, { method: "POST", body: JSON.stringify(fd) });
+          state.token = data.token;
+          state.user = data.user;
+          try { localStorage.setItem("appx_vercel_token", state.token); } catch (ex) {}
+          await refreshData();
+          if (state.leads.length) await openChatThread(state.leads[0].id);
+          if (!state.user.meta_configured) openModal("modal-meta-setup");
+        } catch (err) {
+          errEl.textContent = err.message;
+          errEl.classList.remove("hidden");
+        }
+      });
+
+      document.getElementById("btn-sign-out").addEventListener("click", async () => {
+        try { await apiFetch("/api/auth?action=logout", { method: "POST" }); } catch (e) {}
+        signOutLocal();
+      });
+
+      document.querySelectorAll("[data-copy]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const inp = document.getElementById(btn.dataset.copy);
+          inp.select();
+          try { navigator.clipboard.writeText(inp.value); } catch (e) { document.execCommand("copy"); }
+          showToast("Copied to clipboard!");
+        });
+      });
+
+      document.getElementById("main-nav").addEventListener("click", e => { const b = e.target.closest(".nav-tab"); if (b) switchTab(b.dataset.tab); });
+      document.getElementById("mobile-nav").addEventListener("click", e => { const b = e.target.closest(".mob-tab"); if (b) switchTab(b.dataset.tab); });
+      document.getElementById("btn-go-sheet").addEventListener("click", () => switchTab("sheet"));
+      document.getElementById("btn-meta-setup").addEventListener("click", () => openModal("modal-meta-setup"));
+      document.getElementById("btn-banner-setup").addEventListener("click", () => openModal("modal-meta-setup"));
+      document.getElementById("btn-bulk-open").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-dash-bulk").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-sheet-bulk").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-dash-add-lead").addEventListener("click", () => openModal("modal-add-lead"));
+      document.getElementById("btn-inbox-add").addEventListener("click", () => openModal("modal-add-lead"));
+      document.getElementById("btn-toggle-details").addEventListener("click", () => document.getElementById("details-drawer").classList.toggle("hidden"));
+      document.getElementById("btn-close-details").addEventListener("click", () => document.getElementById("details-drawer").classList.add("hidden"));
+      document.querySelectorAll("[data-close-modal]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.closeModal)));
+
+      const downloadExcel = () => { window.location.href = `/api/export?token=${encodeURIComponent(state.token || "")}`; };
+      document.getElementById("btn-dash-export").addEventListener("click", downloadExcel);
+      document.getElementById("btn-sheet-export").addEventListener("click", downloadExcel);
+
+      document.getElementById("bulk-send-toggle").addEventListener("change", e => {
+        document.getElementById("bulk-tpl-fields").classList.toggle("hidden", !e.target.checked);
+      });
+
+      document.getElementById("reply-type-filters").addEventListener("click", e => {
+        const btn = e.target.closest(".rtype-chip");
+        if (!btn) return;
+        state.replyTypeFilter = btn.dataset.rtype;
+        document.querySelectorAll(".rtype-chip").forEach(c => {
+          c.className = c.dataset.rtype === state.replyTypeFilter
+            ? "rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200"
+            : "rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50";
+        });
+        renderChatList();
+      });
+
+      document.getElementById("ticket-state-filters").addEventListener("click", e => {
+        const btn = e.target.closest(".tstate-tab");
+        if (!btn) return;
+        state.ticketStateFilter = btn.dataset.tstate;
+        document.querySelectorAll(".tstate-tab").forEach(t => {
+          t.className = t.dataset.tstate === state.ticketStateFilter
+            ? "tstate-tab px-2.5 py-1 rounded-md font-medium bg-indigo-50 text-indigo-700"
+            : "tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100";
+        });
+        renderChatList();
+      });
+
+      document.getElementById("chat-search").addEventListener("input", renderChatList);
+      document.getElementById("chat-lead-list").addEventListener("click", async e => {
+        const btn = e.target.closest("[data-action='select-chat']");
+        if (btn) await openChatThread(Number(btn.dataset.id));
+      });
+
+      document.getElementById("composer-mode-toggle").addEventListener("click", e => {
+        const btn = e.target.closest(".cmode-btn");
+        if (!btn) return;
+        state.composerMode = btn.dataset.cmode;
+        document.querySelectorAll(".cmode-btn").forEach(b => {
+          b.className = b.dataset.cmode === state.composerMode ? "cmode-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 font-medium shadow-sm" : "cmode-btn px-2.5 py-1 rounded-md text-slate-600 font-medium";
+        });
+        document.getElementById("template-picker-bar").classList.toggle("hidden", state.composerMode !== "template");
+      });
+
+      document.getElementById("chat-send-form").addEventListener("submit", async e => {
+        e.preventDefault();
+        if (!state.activeLeadId) return;
+        const input = document.getElementById("chat-input");
+        const body = input.value.trim();
+        const template_name = document.getElementById("template-name-input").value.trim();
+        const template_lang = document.getElementById("template-lang-input").value.trim() || "en";
+        if (state.composerMode === "reply" && !body) return;
+        try {
+          await apiFetch("/api/messages", {
+            method: "POST",
+            body: JSON.stringify({ lead_id: state.activeLeadId, body, mode: state.composerMode, template_name, template_lang })
+          });
+          input.value = "";
+          await openChatThread(state.activeLeadId);
+          showToast("Sent via Meta WhatsApp!");
+        } catch (err) {
+          showToast(err.message);
+        }
+      });
+
+      document.getElementById("btn-save-details").addEventListener("click", async () => {
+        if (!state.activeLeadId) return;
+        await apiFetch(`/api/leads?id=${state.activeLeadId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            status: document.getElementById("det-status").value,
+            ticket_state: document.getElementById("det-ticket-state").value,
+            demo_date: document.getElementById("det-demo-date").value,
+            followup_date: document.getElementById("det-followup-date").value,
+            deal_value: Number(document.getElementById("det-deal-value").value || 0),
+            notes: document.getElementById("det-notes").value
+          })
+        });
+        await refreshData();
+        await openChatThread(state.activeLeadId);
+        showToast("Lead details saved!");
+      });
+
+      document.getElementById("followup-queue").addEventListener("click", async e => {
+        const b = e.target.closest("[data-action='open-chat']");
+        if (b) { switchTab("chat"); await openChatThread(Number(b.dataset.id)); }
+      });
+
+      document.getElementById("sheet-search").addEventListener("input", renderSheet);
+      document.getElementById("sheet-filter-status").addEventListener("change", renderSheet);
+      document.getElementById("sheet-tbody").addEventListener("change", async e => {
+        const inp = e.target.closest("[data-field]");
+        if (!inp) return;
+        const id = Number(inp.closest("tr").dataset.leadId);
+        const val = inp.dataset.field === "deal_value" ? Number(inp.value || 0) : inp.value;
+        await apiFetch(`/api/leads?id=${id}`, { method: "PATCH", body: JSON.stringify({ [inp.dataset.field]: val }) });
+        await refreshData();
+        showToast("Saved!");
+      });
+      document.getElementById("sheet-tbody").addEventListener("click", async e => {
+        const b = e.target.closest("[data-action]");
+        if (!b) return;
+        const id = Number(b.dataset.id);
+        if (b.dataset.action === "open-chat") { switchTab("chat"); await openChatThread(id); }
+        else if (b.dataset.action === "delete-lead") { await apiFetch(`/api/leads?id=${id}`, { method: "DELETE" }); await refreshData(); showToast("Lead deleted"); }
+      });
+
+      document.getElementById("form-meta-settings").addEventListener("submit", async e => {
+        e.preventDefault();
+        const errEl = document.getElementById("meta-error");
+        errEl.classList.add("hidden");
+        const btn = document.getElementById("btn-save-meta");
+        btn.disabled = true;
+        btn.textContent = "Verifying with Meta...";
+        try {
+          const fd = Object.fromEntries(new FormData(e.target).entries());
+          const res = await apiFetch("/api/meta", { method: "PUT", body: JSON.stringify(fd) });
+          state.user = res.user;
+          syncUserHeader();
+          closeModal("modal-meta-setup");
+          showToast(`Connected: ${res.meta_info.display_phone_number || "WhatsApp Cloud API"}`);
+        } catch (err) {
+          errEl.textContent = err.message;
+          errEl.classList.remove("hidden");
+        } finally {
+          btn.disabled = false;
+          btn.textContent = "Save & Verify Connection";
+        }
+      });
+
+      document.getElementById("form-bulk-import").addEventListener("submit", async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        const file = fd.get("file");
+        const rows = parseCsvText(await file.text());
+        if (!rows.length) { showToast("CSV has no rows"); return; }
+        try {
+          const res = await apiFetch("/api/leads?action=bulk", {
+            method: "POST",
+            body: JSON.stringify({
+              rows,
+              campaign_name: fd.get("campaign_name") || "appx (Marketing)",
+              send_template: Boolean(fd.get("send_template")),
+              template_name: fd.get("template_name") || "",
+              template_lang: fd.get("template_lang") || "en"
+            })
+          });
+          e.target.reset();
+          closeModal("modal-bulk-import");
+          await refreshData();
+          showToast(`Imported ${res.added} contacts${res.sent ? `, sent ${res.sent} templates` : ""}`);
+        } catch (err) { showToast(err.message); }
+      });
+
+      document.getElementById("form-add-lead").addEventListener("submit", async e => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(e.target).entries());
+        fd.deal_value = Number(fd.deal_value || 0);
+        try {
+          await apiFetch("/api/leads", { method: "POST", body: JSON.stringify(fd) });
+          e.target.reset();
+          closeModal("modal-add-lead");
+          await refreshData();
+          showToast("Lead added");
+        } catch (err) { showToast(err.message); }
+      });
+    }
+
+    async function init() {
+      bindEvents();
+      try { state.token = localStorage.getItem("appx_vercel_token"); } catch (e) {}
+      if (!state.token) return;
+      try {
+        await refreshData();
+        if (state.leads.length) await openChatThread(state.leads[0].id);
+      } catch (e) {
+        signOutLocal();
+      }
+      setInterval(async () => {
+        if (!state.token) return;
+        try { await refreshData(); } catch (e) {}
+      }, 6000);
+    }
+
+    init();
+  </script>
+</body>
+</html>

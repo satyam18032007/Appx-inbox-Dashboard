@@ -1,0 +1,9 @@
+{
+  "version": 2,
+  "rewrites": [
+    {
+      "source": "/webhook/:user_id",
+      "destination": "/api/webhook?user_id=:user_id"
+    }
+  ]
+}
