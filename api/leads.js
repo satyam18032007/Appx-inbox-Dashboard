@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, buildTemplateHeader } = require("./_lib");
 
 const VALID_STATUSES = [
   "No Response",
@@ -45,6 +45,7 @@ module.exports = async (req, res) => {
         template_name = "",
         template_lang = "en",
         template_params,
+        template_media_url = "",
         template_var_mode = "none", // 'none' | 'name' | 'name_business'
       } = req.body || {};
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -58,9 +59,16 @@ module.exports = async (req, res) => {
       const approvedTemplate = send_template
         ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
         : null;
-      const fixedTemplateBody = approvedTemplate && template_params !== undefined
-        ? formatSentTemplate(approvedTemplate, template_params)
-        : null;
+      let templateHeader = null;
+      let fixedTemplateBody = null;
+      if (approvedTemplate) {
+        try {
+          templateHeader = buildTemplateHeader(approvedTemplate, template_media_url);
+          if (template_params !== undefined) fixedTemplateBody = formatSentTemplate(approvedTemplate, template_params);
+        } catch (error) {
+          return res.status(400).json({ error: error.message });
+        }
+      }
       const today = new Date().toISOString().slice(0, 10);
       let added = 0;
       let skipped = 0;
@@ -139,6 +147,7 @@ module.exports = async (req, res) => {
               templateName: template_name,
               templateLang: template_lang,
               templateParams: params,
+              templateHeader,
             });
             await sb.from("messages").insert({
               user_id: user.id,

@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, takeWhatsAppThread } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, buildTemplateHeader, takeWhatsAppThread } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], voice_base64 } = req.body || {};
+      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], template_media_url = "", voice_base64 } = req.body || {};
       const leadId = Number(lead_id);
       if (!leadId) return res.status(400).json({ error: "lead_id required." });
 
@@ -90,9 +90,19 @@ module.exports = async (req, res) => {
         }
         audioMediaId = await uploadWhatsAppVoice(user, audio);
       }
-      const storedBody = mode === "template"
-        ? formatSentTemplate(await getApprovedWhatsAppTemplate(user, template_name, template_lang), template_params)
-        : mode === "voice" ? "[Voice Note sent]" : cleanText;
+      const approvedTemplate = mode === "template"
+        ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
+        : null;
+      let templateHeader = null;
+      let storedBody = mode === "voice" ? "[Voice Note sent]" : cleanText;
+      if (approvedTemplate) {
+        try {
+          templateHeader = buildTemplateHeader(approvedTemplate, template_media_url);
+          storedBody = formatSentTemplate(approvedTemplate, template_params);
+        } catch (error) {
+          return res.status(400).json({ error: error.message });
+        }
+      }
 
       // Send live via Meta WhatsApp Cloud API (throws real error if not connected or Meta rejects)
       const waMsgId = await sendMetaWhatsApp({
@@ -103,6 +113,7 @@ module.exports = async (req, res) => {
         templateName: template_name,
         templateLang: template_lang,
         templateParams: template_params,
+        templateHeader,
         audioMediaId,
       });
 

@@ -192,6 +192,7 @@ async function sendMetaWhatsApp({
   templateName = "",
   templateLang = "en",
   templateParams = [],
+  templateHeader = null,
   mediaUrl = "",
   mediaType = "document",
   audioMediaId = "",
@@ -208,14 +209,15 @@ async function sendMetaWhatsApp({
     if (!Array.isArray(templateParams) || templateParams.some(value => typeof value !== "string" || !value.trim())) {
       throw new Error("Fill all template values before sending.");
     }
+    const components = [];
+    if (templateHeader) components.push(templateHeader);
     if (templateParams.length > 0) {
-      tpl.components = [
-        {
-          type: "body",
-          parameters: templateParams.map((p) => ({ type: "text", text: p.trim() })),
-        },
-      ];
+      components.push({
+        type: "body",
+        parameters: templateParams.map((p) => ({ type: "text", text: p.trim() })),
+      });
     }
+    if (components.length) tpl.components = components;
     payload = { messaging_product: "whatsapp", to: toPhone, type: "template", template: tpl };
   } else if (mode === "voice" && audioMediaId) {
     payload = { messaging_product: "whatsapp", to: toPhone, type: "audio", audio: { id: audioMediaId, voice: true } };
@@ -264,7 +266,7 @@ function describeWhatsAppTemplate(template) {
   const positions = [...body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map(match => Number(match[1]));
   return {
     name: template.name, status: template.status, category: template.category, language: template.language,
-    header: text("HEADER"), body, footer: text("FOOTER"), var_count: Math.max(0, ...positions),
+    header: text("HEADER"), header_format: components.find(component => component.type === "HEADER")?.format || "", body, footer: text("FOOTER"), var_count: Math.max(0, ...positions),
   };
 }
 
@@ -284,6 +286,26 @@ async function getApprovedWhatsAppTemplate(user, name, language) {
     item.name === name && item.language === language && item.status === "APPROVED");
   if (!template) throw new Error("Meta no longer lists this template and language as approved. Sync and select again.");
   return describeWhatsAppTemplate(template);
+}
+
+function buildTemplateHeader(template, mediaUrl = "") {
+  const type = String(template.header_format || "").toLowerCase();
+  if (!["image", "video", "document"].includes(type)) {
+    if (mediaUrl) throw new Error("Select an approved image, video or document header template to attach a file.");
+    if (type && type !== "text") throw new Error("This approved template has a header format AppX cannot send.");
+    return null;
+  }
+  if (typeof mediaUrl !== "string") throw new Error("Enter a public HTTPS link for the template header.");
+  let url;
+  try {
+    url = new URL(mediaUrl.trim());
+  } catch {
+    throw new Error(`Template ${template.name} needs a direct public HTTPS link for its ${type} header.`);
+  }
+  if (url.protocol !== "https:" || url.username || url.password) {
+    throw new Error("Use a public HTTPS link without login credentials for the template header.");
+  }
+  return { type: "header", parameters: [{ type, [type]: { link: url.href } }] };
 }
 
 function formatSentTemplate(template, values) {
@@ -465,6 +487,7 @@ module.exports = {
   describeWhatsAppTemplate,
   getApprovedWhatsAppTemplate,
   formatSentTemplate,
+  buildTemplateHeader,
   takeWhatsAppThread,
   sendOwnerAlert,
   getGeminiApiKey,
