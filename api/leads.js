@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, CAMPAIGN_FOLLOW_UP_MARKER, getGeminiApiKey } = require("./_lib");
 
 const VALID_STATUSES = [
   "No Response",
@@ -42,6 +42,7 @@ module.exports = async (req, res) => {
         rows = [],
         campaign_name = "appx (Marketing)",
         send_template = false,
+        coaching_follow_up = false,
         template_name = "",
         template_lang = "en",
         template_params,
@@ -60,6 +61,20 @@ module.exports = async (req, res) => {
       const approvedTemplate = send_template
         ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
         : null;
+      let templateButtons = [];
+      if (coaching_follow_up === true) {
+        const replies = approvedTemplate?.quick_replies || [];
+        if (!replies.some(button => String(button.text).trim().toLowerCase() === "yes")) {
+          return res.status(400).json({ error: "Select an approved template with a YES quick-reply button for the coaching follow-up." });
+        }
+        if (!user.ai_enabled || !getGeminiApiKey() || !normalizePhone(user.owner_alert_phone || "")) {
+          return res.status(400).json({ error: "In AI Agent settings, enable AI replies and save your alert phone before starting this campaign." });
+        }
+        templateButtons = replies.map(button => ({
+          type: "button", sub_type: "quick_reply", index: String(button.index),
+          parameters: [{ type: "payload", payload: `appx_coaching_${button.index}` }],
+        }));
+      }
       let templateHeader = null;
       let fixedTemplateBody = null;
       if (approvedTemplate) {
@@ -149,16 +164,21 @@ module.exports = async (req, res) => {
               templateLang: template_lang,
               templateParams: params,
               templateHeader,
+              templateButtons,
             });
-            await sb.from("messages").insert({
+            const { error: recordError } = await sb.from("messages").insert({
               user_id: user.id,
               lead_id: leadId,
               direction: "outgoing",
-              body: storedBody,
+              body: coaching_follow_up === true ? storedBody + CAMPAIGN_FOLLOW_UP_MARKER : storedBody,
               wa_message_id: waId,
               delivery_status: "Sent",
             });
             sent++;
+            if (recordError) {
+              console.error("Bulk message accepted by Meta but could not be recorded:", waId, recordError.code);
+              lastError = "A sent message could not be recorded in AppX.";
+            }
           } catch (e) {
             failed++;
             lastError = e.message;

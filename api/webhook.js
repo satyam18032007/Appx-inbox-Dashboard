@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit } = require("./_lib");
+const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
@@ -16,6 +16,35 @@ function classifyReply(text) {
     return { reply_type: "Interested", auto_status: "Interested" };
   }
   return { reply_type: "Free text", auto_status: "Interested" };
+}
+
+async function sendCoachingFollowUp({ sb, user, lead, fromPhone }) {
+  const stage = lead.ai_stage ?? null;
+  if (["coaching_intro_sending", "awaiting_coaching_subject", "awaiting_demo_time", "demo_requested", "demo_booked"].includes(stage)) return;
+  let claim = sb.from("leads").update({ ai_stage: "coaching_intro_sending" })
+    .eq("user_id", user.id).eq("id", lead.id).neq("reply_type", "Opted out").or("ai_paused.is.null,ai_paused.eq.false");
+  claim = stage === null ? claim.is("ai_stage", null) : claim.eq("ai_stage", stage);
+  const { data: claimed, error: claimError } = await claim.select("id").maybeSingle();
+  if (claimError) throw claimError;
+  if (!claimed) return;
+
+  let nextStage = stage;
+  try {
+    const replies = stage === "coaching_subject_pending"
+      ? [CAMPAIGN_SUBJECT_QUESTION] : [CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION];
+    for (const body of replies) {
+      const id = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: body, mode: "reply" });
+      nextStage = body === CAMPAIGN_FEATURES ? "coaching_subject_pending" : "awaiting_coaching_subject";
+      const { error } = await sb.from("messages").insert({
+        user_id: user.id, lead_id: lead.id, direction: "outgoing", body, wa_message_id: id, delivery_status: "AI Sent",
+      });
+      if (error) throw error;
+    }
+  } finally {
+    const { error } = await sb.from("leads").update({ ai_stage: nextStage })
+      .eq("user_id", user.id).eq("id", lead.id).eq("ai_stage", "coaching_intro_sending");
+    if (error) throw error;
+  }
 }
 
 module.exports = async (req, res) => {
@@ -206,6 +235,30 @@ module.exports = async (req, res) => {
             }
 
             if (optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
+
+            const quickReply = ["button", "interactive"].includes(mtype) ? text.trim().toLowerCase() : "";
+            if (msg.context?.id && ["yes", "no"].includes(quickReply)) {
+              try {
+                const { data: campaign, error } = await sb.from("messages").select("body")
+                  .eq("user_id", user.id).eq("lead_id", lead.id).eq("direction", "outgoing")
+                  .eq("wa_message_id", msg.context.id).limit(1).maybeSingle();
+                if (error) throw error;
+                if (campaign?.body?.endsWith(CAMPAIGN_FOLLOW_UP_MARKER)) {
+                  if (quickReply === "yes" && user.ai_enabled && !lead.ai_paused) {
+                    await sendCoachingFollowUp({ sb, user, lead, fromPhone });
+                  } else if (quickReply === "no") {
+                    const { error: declineError } = await sb.from("leads")
+                      .update({ reply_type: "Not interested" })
+                      .eq("user_id", user.id).eq("id", lead.id).neq("reply_type", "Opted out");
+                    if (declineError) throw declineError;
+                  }
+                  continue;
+                }
+              } catch (error) {
+                console.error("Coaching campaign follow-up failed:", waId, error.message);
+                continue;
+              }
+            }
 
             // === AI SALES QUALIFIER AGENT (Gemini + Category Assets + Owner Demo Alert) ===
             if (user.ai_enabled && getGeminiApiKey() && !lead.ai_paused && reply_type !== "Opted out" && reply_type !== "Not interested") {

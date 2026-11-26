@@ -500,6 +500,10 @@
           <span class="text-slate-700 font-medium">Send approved Meta Template now</span>
         </label>
         <div id="bulk-tpl-fields" class="hidden space-y-2">
+          <label class="flex items-start gap-2">
+            <input type="checkbox" name="coaching_follow_up" class="mt-0.5 rounded border-slate-300" />
+            <span>On YES, send AppX features and ask what they teach. The AI agent can then send a matching brochure and flag demo requests.</span>
+          </label>
           <div class="flex items-center gap-2">
             <select id="bulk-template-select" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white">
               <option value="">Select approved Meta template...</option>
@@ -1147,7 +1151,7 @@
           return `
             <div class="flex ${isOut ? "justify-end" : "justify-start"}">
               <div class="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isOut ? "appx-bubble-out rounded-br-sm" : "bg-white border border-slate-200 text-slate-900 rounded-bl-sm"}">
-                <div class="whitespace-pre-wrap">${escapeHtml(String(m.body || "").replace(/^\[Template: [^\]\n]+\]\n(?=\S)/, ""))}</div>
+                <div class="whitespace-pre-wrap">${escapeHtml(String(m.body || "").replace(/\n\[AppX coaching follow-up enabled\]$/, "").replace(/^\[Template: [^\]\n]+\]\n(?=\S)/, ""))}</div>
                 ${m.audio_media_id ? `<div class="mt-2"><button type="button" data-play-voice="${escapeHtml(m.id)}" class="rounded border px-2 py-1 text-xs">Play voice note</button></div>` : ""}
                 <div class="text-[10px] ${isOut ? "text-indigo-900/60 text-right" : "text-slate-400"} mt-1">
                   ${escapeHtml(fmtTime(m.created_at))} ${isOut ? `· ${escapeHtml(m.delivery_status || "Sent")}` : ""}
@@ -1762,6 +1766,7 @@ Regards,
               rows,
               campaign_name: fd.get("campaign_name") || "appx (Marketing)",
               send_template: Boolean(fd.get("send_template")),
+              coaching_follow_up: Boolean(fd.get("send_template") && fd.get("coaching_follow_up")),
               template_name: fd.get("template_name") || "",
               template_lang: fd.get("template_lang") || "en",
               ...(fd.get("send_template")
