@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, takeWhatsAppThread } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, takeWhatsAppThread, COACHING_TEST_MARKER, getGeminiApiKey } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], template_media_url = "", template_image_base64, voice_base64 } = req.body || {};
+      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], template_media_url = "", template_image_base64, voice_base64, fresh_coaching_test = false } = req.body || {};
       const leadId = Number(lead_id);
       if (!leadId) return res.status(400).json({ error: "lead_id required." });
 
@@ -93,6 +93,21 @@ module.exports = async (req, res) => {
       const approvedTemplate = mode === "template"
         ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
         : null;
+      let templateButtons = [];
+      if (fresh_coaching_test === true) {
+        if (user.team_role) return res.status(403).json({ error: "Only the workspace owner can start a fresh test." });
+        const replies = approvedTemplate?.quick_replies || [];
+        if (!replies.some(button => String(button.text).trim().toLowerCase() === "yes")) {
+          return res.status(400).json({ error: "A fresh coaching test needs an approved template with a YES button." });
+        }
+        if (!user.ai_enabled || !getGeminiApiKey() || lead.ai_paused) {
+          return res.status(400).json({ error: "Enable AI and unpause this chat before starting a fresh coaching test." });
+        }
+        templateButtons = replies.map(button => ({
+          type: "button", sub_type: "quick_reply", index: String(button.index),
+          parameters: [{ type: "payload", payload: `appx_coaching_test_${button.index}` }],
+        }));
+      }
       let templateHeader = null;
       let storedBody = mode === "voice" ? "[Voice Note sent]" : cleanText;
       if (approvedTemplate) {
@@ -114,6 +129,7 @@ module.exports = async (req, res) => {
         templateLang: template_lang,
         templateParams: template_params,
         templateHeader,
+        templateButtons,
         audioMediaId,
       });
 
@@ -123,7 +139,7 @@ module.exports = async (req, res) => {
           user_id: user.id,
           lead_id: leadId,
           direction: "outgoing",
-          body: storedBody,
+          body: fresh_coaching_test === true ? storedBody + COACHING_TEST_MARKER : storedBody,
           wa_message_id: waMsgId,
           ...(audioMediaId ? { audio_media_id: audioMediaId } : {}),
           delivery_status: "Sent",

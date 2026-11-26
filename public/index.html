@@ -198,6 +198,10 @@
             <div class="flex items-center gap-2">
               <input id="template-name-input" form="chat-send-form" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
               <input id="template-lang-input" form="chat-send-form" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
+              <label class="col-span-2 flex items-center gap-2 text-xs text-slate-700">
+                <input id="fresh-coaching-test" type="checkbox" class="rounded border-slate-300" />
+                Start fresh coaching test on YES (use your own test number)
+              </label>
             </div>
           </div>
 
@@ -736,6 +740,7 @@
       clearVoiceDraft();
       clearVoicePlayback();
       state.token = null; state.user = null; state.leads = []; state.activeLeadId = null;
+      document.getElementById("fresh-coaching-test").checked = false;
       state.messagesByLead = {};
       document.getElementById("chat-messages").replaceChildren();
       document.getElementById("chat-composer").classList.add("hidden");
@@ -1114,6 +1119,7 @@
     async function openChatThread(leadId) {
       const switching = leadId !== state.activeLeadId;
       if (switching) { clearVoiceDraft(); clearVoicePlayback(); }
+      if (state.activeLeadId !== leadId) document.getElementById("fresh-coaching-test").checked = false;
       state.activeLeadId = leadId;
       const lead = state.leads.find(l => l.id === leadId);
       if (!lead) return;
@@ -1163,7 +1169,7 @@
           return `
             <div class="flex ${isOut ? "justify-end" : "justify-start"}">
               <div class="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isOut ? "appx-bubble-out rounded-br-sm" : "bg-white border border-slate-200 text-slate-900 rounded-bl-sm"}">
-                <div class="whitespace-pre-wrap">${escapeHtml(String(m.body || "").replace(/\n\[AppX coaching follow-up enabled\]$/, "").replace(/^\[Template: [^\]\n]+\]\n(?=\S)/, ""))}</div>
+                <div class="whitespace-pre-wrap">${escapeHtml(String(m.body || "").replace(/\n\[AppX coaching (?:follow-up enabled|test ready|test used)\]$/, "").replace(/^\[Template: [^\]\n]+\]\n(?=\S)/, ""))}</div>
                 ${m.audio_media_id ? `<div class="mt-2"><button type="button" data-play-voice="${escapeHtml(m.id)}" class="rounded border px-2 py-1 text-xs">Play voice note</button></div>` : ""}
                 <div class="text-[10px] ${isOut ? "text-indigo-900/60 text-right" : "text-slate-400"} mt-1">
                   ${escapeHtml(fmtTime(m.created_at))} ${isOut ? `· ${escapeHtml(m.delivery_status || "Sent")}` : ""}
@@ -1700,7 +1706,11 @@ Regards,
         try {
           const templateFields = state.composerMode === "template"
             ? await readTemplateValues("template-select-dropdown", template_name, template_lang) : {};
-          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, body, mode: state.composerMode, template_name, template_lang, ...templateFields }) });
+          const freshTest = document.getElementById("fresh-coaching-test");
+          const fresh_coaching_test = state.composerMode === "template" && freshTest.checked;
+          if (fresh_coaching_test && !confirm("Send this template to your test number? A YES will reset this chat’s coaching stage and demo status.")) return;
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, body, mode: state.composerMode, template_name, template_lang, fresh_coaching_test, ...templateFields }) });
+          freshTest.checked = false;
           if (leadId === state.activeLeadId) {
             input.value = "";
             takeThread.classList.add("hidden");

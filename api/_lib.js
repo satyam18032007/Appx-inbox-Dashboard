@@ -435,6 +435,8 @@ function normalizeSalesDecision(result) {
   };
 }
 
+const COACHING_TEST_MARKER = "\n[AppX coaching test ready]";
+const COACHING_TEST_USED = "\n[AppX coaching test used]";
 const CAMPAIGN_FOLLOW_UP_MARKER = "\n[AppX coaching follow-up enabled]";
 const CAMPAIGN_FEATURES = `Thanks for your interest! Here’s what AppX offers for online coaching:
 
@@ -579,6 +581,8 @@ module.exports = {
   sendOwnerAlert,
   getGeminiApiKey,
   generateGeminiText,
+  COACHING_TEST_MARKER,
+  COACHING_TEST_USED,
   CAMPAIGN_FOLLOW_UP_MARKER,
   CAMPAIGN_FEATURES,
   CAMPAIGN_SUBJECT_QUESTION,

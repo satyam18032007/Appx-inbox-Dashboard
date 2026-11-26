@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
+const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, COACHING_TEST_MARKER, COACHING_TEST_USED, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
@@ -243,8 +243,24 @@ module.exports = async (req, res) => {
                   .eq("user_id", user.id).eq("lead_id", lead.id).eq("direction", "outgoing")
                   .eq("wa_message_id", msg.context.id).limit(1).maybeSingle();
                 if (error) throw error;
-                if (campaign?.body?.endsWith(CAMPAIGN_FOLLOW_UP_MARKER)) {
+                if (campaign?.body?.endsWith(COACHING_TEST_USED)) continue;
+                const freshTest = campaign?.body?.endsWith(COACHING_TEST_MARKER);
+                if (freshTest || campaign?.body?.endsWith(CAMPAIGN_FOLLOW_UP_MARKER)) {
                   if (quickReply === "yes" && user.ai_enabled && !lead.ai_paused) {
+                    if (freshTest) {
+                      const { data: testClaim, error: testError } = await sb.from("messages")
+                        .update({ body: campaign.body.slice(0, -COACHING_TEST_MARKER.length) + COACHING_TEST_USED })
+                        .eq("user_id", user.id).eq("lead_id", lead.id).eq("wa_message_id", msg.context.id)
+                        .eq("body", campaign.body).select("id").maybeSingle();
+                      if (testError) throw testError;
+                      if (!testClaim) continue;
+                      const { data: reset, error: resetError } = await sb.from("leads")
+                        .update({ ai_stage: "qualifying", assets_sent: false, ai_questions_asked: 0, detected_category: "", status: "Interested" })
+                        .eq("user_id", user.id).eq("id", lead.id).neq("reply_type", "Opted out").select("*").maybeSingle();
+                      if (resetError) throw resetError;
+                      if (!reset) continue;
+                      lead = reset;
+                    }
                     await sendCoachingFollowUp({ sb, user, lead, fromPhone });
                   } else if (quickReply === "no") {
                     const { error: declineError } = await sb.from("leads")
@@ -274,7 +290,13 @@ module.exports = async (req, res) => {
                   ? matchCoachingSubject(assetKits, text) : "";
                 const aiOut = directCategory
                   ? { detected_category: directCategory, send_assets: true }
-                  : await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia, latestMessage: text });
+                  : await runGeminiSalesAgent({
+                    user, lead, assetKits, audioMedia, latestMessage: text,
+                    history: (() => {
+                      const subjectQuestion = history.findIndex(entry => entry.direction === "outgoing" && entry.body === CAMPAIGN_SUBJECT_QUESTION);
+                      return (subjectQuestion >= 0 ? history.slice(0, subjectQuestion + 1) : history.slice()).reverse();
+                    })(),
+                  });
                 if (!aiOut) throw new Error("Gemini returned no usable sales decision");
                 console.info("AI agent decision", { messageId: waId, reply: Boolean(aiOut.reply), assets: aiOut.send_assets, demo: aiOut.demo_booked });
                 if (aiOut) {
