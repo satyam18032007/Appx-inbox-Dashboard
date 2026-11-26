@@ -194,7 +194,7 @@
               </select>
               <button type="button" id="btn-sync-templates" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-700">↻ Sync</button>
             </div>
-            <div id="inbox-template-values" class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto"></div>
+            <div id="inbox-template-values" class="grid grid-cols-2 gap-2"></div>
             <div class="flex items-center gap-2">
               <input id="template-name-input" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
               <input id="template-lang-input" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
@@ -537,7 +537,7 @@
             <input id="bulk-tpl-name" name="template_name" placeholder="Template name" class="col-span-2 px-2.5 py-1.5 rounded-lg border border-slate-300" />
             <input id="bulk-tpl-lang" name="template_lang" value="en" placeholder="Lang (en)" class="px-2.5 py-1.5 rounded-lg border border-slate-300" />
           </div>
-          <div id="bulk-template-values" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto"></div>
+          <div id="bulk-template-values" class="grid grid-cols-2 gap-2"></div>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" data-close-modal="modal-bulk-import" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
@@ -792,37 +792,58 @@
 
       let saved = [];
       try { saved = JSON.parse(localStorage.getItem("appx-template:" + key) || "[]"); } catch {}
-      const heading = document.createElement("p");
-      heading.className = "col-span-2 text-slate-600";
-      heading.textContent = "Template values · the same text is sent to every recipient";
-      if (count) panel.append(heading);
+      const updateValues = values => {
+        try { localStorage.setItem("appx-template:" + key, JSON.stringify(values)); } catch {}
+        updateTemplatePreview(panel, option, values);
+        for (const otherId of ["inbox-template-values", "bulk-template-values"]) {
+          const other = document.getElementById(otherId);
+          if (other !== panel && other.dataset.templateKey === key) {
+            [...other.querySelectorAll("input")].forEach((field, i) => { field.value = values[i] || ""; });
+            updateTemplatePreview(other, option, values);
+          }
+        }
+      };
+
+      if (count) {
+        const controls = document.createElement("div");
+        controls.className = "col-span-2 flex flex-wrap justify-between items-center gap-2";
+        const heading = document.createElement("strong");
+        heading.textContent = "Edit template values";
+        const reset = document.createElement("button");
+        reset.type = "button";
+        reset.className = "rounded border border-indigo-300 bg-white px-2 py-1 text-indigo-700";
+        reset.textContent = "Reset values";
+        controls.append(heading, reset);
+        panel.append(controls);
+
+        const fields = document.createElement("div");
+        fields.className = "col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-2 max-h-44 overflow-y-auto";
+        for (let index = 0; index < count; index++) {
+          const label = document.createElement("label");
+          const marker = "{{" + (index + 1) + "}}";
+          const context = (option.dataset.body || "").split("\n").find(line => line.includes(marker));
+          label.textContent = context && context.trim() !== marker ? context.trim() : marker;
+          const input = document.createElement("input");
+          input.type = "text";
+          input.className = "block w-full rounded border border-slate-300 px-2 py-1.5";
+          input.value = Array.isArray(saved) && typeof saved[index] === "string" ? saved[index] : "";
+          input.addEventListener("input", () => updateValues([...fields.querySelectorAll("input")].map(field => field.value)));
+          label.append(input);
+          fields.append(label);
+        }
+        reset.addEventListener("click", () => {
+          const inputs = [...fields.querySelectorAll("input")];
+          inputs.forEach(input => { input.value = ""; });
+          updateValues([]);
+          inputs[0]?.focus();
+        });
+        panel.append(fields);
+      }
+
       const preview = document.createElement("p");
-      preview.className = "col-span-2 whitespace-pre-wrap rounded border border-indigo-200 bg-white p-2 text-slate-800";
+      preview.className = "col-span-2 max-h-28 overflow-y-auto whitespace-pre-wrap rounded border border-indigo-200 bg-white p-2 text-slate-800";
       preview.dataset.templatePreview = "";
       panel.append(preview);
-
-      for (let index = 0; index < count; index++) {
-        const label = document.createElement("label");
-        label.textContent = "{{" + (index + 1) + "}} ";
-        const input = document.createElement("input");
-        input.type = "text";
-        input.className = "block w-full rounded border border-slate-300 px-2 py-1.5";
-        input.value = Array.isArray(saved) && typeof saved[index] === "string" ? saved[index] : "";
-        input.addEventListener("input", () => {
-          const values = [...panel.querySelectorAll("input")].map(field => field.value);
-          try { localStorage.setItem("appx-template:" + key, JSON.stringify(values)); } catch {}
-          updateTemplatePreview(panel, option, values);
-          for (const otherId of ["inbox-template-values", "bulk-template-values"]) {
-            const other = document.getElementById(otherId);
-            if (other !== panel && other.dataset.templateKey === key) {
-              [...other.querySelectorAll("input")].forEach((field, i) => { field.value = values[i] || ""; });
-              updateTemplatePreview(other, option, values);
-            }
-          }
-        });
-        label.append(input);
-        panel.append(label);
-      }
       panel.dataset.templateKey = key;
       updateTemplatePreview(panel, option, [...panel.querySelectorAll("input")].map(field => field.value));
     }
