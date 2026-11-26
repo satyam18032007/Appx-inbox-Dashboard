@@ -226,7 +226,7 @@
             <select id="det-status" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm">
               <option value="No Response">No Response</option>
               <option value="Interested">Interested</option>
-              <option value="Demo Booked">Demo Booked</option>
+              <option value="Demo Requested">Demo Requested</option><option value="Demo Booked">Demo Booked</option>
               <option value="Demo Done">Demo Done</option>
               <option value="Follow-up Due">Follow-up Due</option>
               <option value="Sold">Sold</option>
@@ -316,7 +316,7 @@
             <option value="All">All Statuses</option>
             <option value="No Response">No Response</option>
             <option value="Interested">Interested</option>
-            <option value="Demo Booked">Demo Booked</option>
+            <option value="Demo Requested">Demo Requested</option><option value="Demo Booked">Demo Booked</option>
             <option value="Demo Done">Demo Done</option>
             <option value="Follow-up Due">Follow-up Due</option>
             <option value="Sold">Sold</option>
@@ -558,7 +558,7 @@
         <input name="business_name" placeholder="Business / Academy" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
         <div class="grid grid-cols-2 gap-2">
           <select name="status" class="px-3 py-2 rounded-lg border border-slate-300 bg-white">
-            <option value="No Response">No Response</option><option value="Interested">Interested</option><option value="Demo Booked">Demo Booked</option><option value="Demo Done">Demo Done</option><option value="Follow-up Due">Follow-up Due</option><option value="Sold">Sold</option>
+            <option value="No Response">No Response</option><option value="Interested">Interested</option><option value="Demo Requested">Demo Requested</option><option value="Demo Booked">Demo Booked</option><option value="Demo Done">Demo Done</option><option value="Follow-up Due">Follow-up Due</option><option value="Sold">Sold</option>
           </select>
           <input type="number" name="deal_value" value="0" placeholder="Deal ₹" class="px-3 py-2 rounded-lg border border-slate-300" />
         </div>
@@ -652,7 +652,7 @@
       return lead.status === "Follow-up Due" || Boolean(lead.followup_date && lead.followup_date <= today && !["Sold", "Not Interested"].includes(lead.status));
     }
     const AVATAR_COLORS = ["bg-emerald-100 text-emerald-800", "bg-orange-100 text-orange-800", "bg-sky-100 text-sky-800", "bg-violet-100 text-violet-800", "bg-amber-100 text-amber-800", "bg-rose-100 text-rose-800"];
-    const STATUS_BADGES = { "No Response": "bg-slate-100 text-slate-700", "Interested": "bg-purple-100 text-purple-700", "Demo Booked": "bg-blue-100 text-blue-700", "Demo Done": "bg-indigo-100 text-indigo-700", "Follow-up Due": "bg-amber-100 text-amber-800", "Sold": "bg-emerald-100 text-emerald-800", "Not Interested": "bg-rose-100 text-rose-700" };
+    const STATUS_BADGES = { "No Response": "bg-slate-100 text-slate-700", "Interested": "bg-purple-100 text-purple-700", "Demo Requested": "bg-amber-100 text-amber-800", "Demo Booked": "bg-blue-100 text-blue-700", "Demo Done": "bg-indigo-100 text-indigo-700", "Follow-up Due": "bg-amber-100 text-amber-800", "Sold": "bg-emerald-100 text-emerald-800", "Not Interested": "bg-rose-100 text-rose-700" };
 
     const state = {
       token: null, user: null, authMode: "login", leads: [], kits: [], webinars: [],
@@ -1123,16 +1123,16 @@
       document.getElementById("kpi-conv").textContent = `${total ? ((sold / total) * 100).toFixed(1) : "0.0"}%`;
       document.getElementById("kpi-revenue").textContent = `₹${revenue.toLocaleString("en-IN")} revenue`;
 
-      const stages = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold"];
+      const stages = ["No Response", "Interested", "Demo Requested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold"];
       const ctx = document.getElementById("pipeline-chart").getContext("2d");
       if (state.chartInstance) state.chartInstance.destroy();
       state.chartInstance = new Chart(ctx, {
         type: "bar",
-        data: { labels: stages, datasets: [{ data: stages.map(st => leads.filter(l => l.status === st).length), backgroundColor: ["#94a3b8", "#a855f7", "#3b82f6", "#6366f1", "#f59e0b", "#10b981"], borderRadius: 6 }] },
+        data: { labels: stages, datasets: [{ data: stages.map(st => leads.filter(l => l.status === st).length), backgroundColor: ["#94a3b8", "#a855f7", "#f59e0b", "#3b82f6", "#6366f1", "#f59e0b", "#10b981"], borderRadius: 6 }] },
         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } }
       });
 
-      const queue = leads.filter(l => followupDue(l) || (l.has_responded && (l.status === "Demo Booked" || l.unread_count > 0)));
+      const queue = leads.filter(l => followupDue(l) || (l.has_responded && (["Demo Requested", "Demo Booked"].includes(l.status) || l.unread_count > 0)));
       document.getElementById("followup-queue").innerHTML = queue.length
         ? queue.map(l => `
           <div class="py-3 flex items-center justify-between gap-2">
@@ -1154,7 +1154,7 @@
       const filtered = state.leads.filter(l => (!dueOnly || followupDue(l)) && (stFilter === "All" || l.status === stFilter) && (!q || l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.business_name || "").toLowerCase().includes(q)));
       if (sort === "value") filtered.sort((a, b) => Number(b.deal_value || 0) - Number(a.deal_value || 0));
       if (sort === "name") filtered.sort((a, b) => a.name.localeCompare(b.name));
-      const opts = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold", "Not Interested"];
+      const opts = ["No Response", "Interested", "Demo Requested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold", "Not Interested"];
       document.getElementById("sheet-tbody").innerHTML = filtered.length
         ? filtered.map(l => `
           <tr class="hover:bg-slate-50" data-lead-id="${l.id}">
@@ -1560,7 +1560,7 @@
         out.classList.remove("hidden"); out.textContent = "Testing Gemini AI...";
         try {
           const res = await apiFetch("/api/ai?action=test", { method: "POST", body: JSON.stringify({ message: "Haan ji interested hoon, main Physics padhata hoon aur 5000 YouTube subscribers hain" }) });
-          out.innerHTML = `<div><strong>AI Reply:</strong> ${escapeHtml(res.result.reply || "No separate reply")}</div><div><strong>Detected Category:</strong> ${escapeHtml(res.result.detected_category || "None")} | <strong>Send Assets:</strong> ${res.result.send_assets ? "YES" : "Not yet"} | <strong>Demo Booked:</strong> ${res.result.demo_booked ? "YES" : "No"}</div>`;
+          out.innerHTML = `<div><strong>AI Reply:</strong> ${escapeHtml(res.result.reply || "No separate reply")}</div><div><strong>Detected Category:</strong> ${escapeHtml(res.result.detected_category || "None")} | <strong>Send Assets:</strong> ${res.result.send_assets ? "YES" : "Not yet"} | <strong>Demo Handoff:</strong> ${res.result.demo_booked ? "YES" : "No"}</div>`;
         } catch (err) { out.textContent = err.message; }
       });
 

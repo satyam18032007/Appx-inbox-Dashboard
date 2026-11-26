@@ -10,7 +10,7 @@ function classifyReply(text) {
     return { reply_type: "Not interested", auto_status: "Not Interested" };
   }
   if (["demo", "book", "slot", "schedule", "call me"].some((k) => lower.includes(k))) {
-    return { reply_type: "Interested", auto_status: "Demo Booked" };
+    return { reply_type: "Interested", auto_status: "Interested" };
   }
   if (["price", "cost", "plan", "rate", "kitna", "interested", "details", "appx"].some((k) => lower.includes(k))) {
     return { reply_type: "Interested", auto_status: "Interested" };
@@ -249,20 +249,24 @@ module.exports = async (req, res) => {
                       });
                       leadUpdates.last_message = assetBody;
                       leadUpdates.assets_sent = true;
-                      if (lead.ai_stage !== "demo_booked") leadUpdates.ai_stage = "awaiting_demo_time";
+                      if (!["demo_requested", "demo_booked"].includes(lead.ai_stage)) leadUpdates.ai_stage = "awaiting_demo_time";
                     }
                   }
 
-                  // 3. Demo Booked -> Update CRM + Instant Alert to Owner's Phone (SMS / WhatsApp)
-                  if (aiOut.demo_booked && lead.ai_stage !== "demo_booked") {
-                    const slotText = aiOut.demo_time_text || text;
-                    leadUpdates.status = "Demo Booked";
-                    leadUpdates.demo_date = today;
-                    leadUpdates.ai_stage = "demo_booked";
-                    leadUpdates.notes = `${lead.notes ? lead.notes + " | " : ""}Demo requested: ${slotText} (${aiOut.detected_category || lead.detected_category || "General"})`;
-
-                    const alertMsg = `AppX Demo Alert! Lead: ${lead.name} (+${fromPhone}) | Category: ${aiOut.detected_category || lead.detected_category || "General"} | Requested Time: ${slotText}`;
-                    await sendOwnerAlert({ user, message: alertMsg });
+                  // Notify the owner and keep proposed slots separate from confirmed bookings.
+                  if (aiOut.demo_booked && !["Demo Booked", "Demo Done", "Sold"].includes(lead.status)) {
+                    const slotText = aiOut.demo_time_text;
+                    const category = aiOut.detected_category || lead.detected_category || "General";
+                    const requestNote = `Demo requested: ${slotText} (${category})`;
+                    if (lead.reply_type !== "Opted out" && !String(lead.notes || "").split(" | ").includes(requestNote)) {
+                      leadUpdates.status = "Demo Requested";
+                      leadUpdates.ai_stage = "demo_requested";
+                      const alertMsg = `AppX demo request: ${lead.name} (+${fromPhone})
+Proposed slot: ${slotText}
+Check availability, send the Google Meet/video link and confirm the slot with the lead. Then mark Demo Booked in AppX.`;
+                      const accepted = await sendOwnerAlert({ user, message: alertMsg });
+                      leadUpdates.notes = [lead.notes, requestNote, accepted ? "" : "Owner alert unavailable. Check the demo request in AppX."].filter(Boolean).join(" | ");
+                    }
                   }
 
                   await sb.from("leads").update(leadUpdates).eq("id", lead.id).eq("user_id", userId);

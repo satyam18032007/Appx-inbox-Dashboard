@@ -3,6 +3,7 @@ const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedW
 const VALID_STATUSES = [
   "No Response",
   "Interested",
+  "Demo Requested",
   "Demo Booked",
   "Demo Done",
   "Follow-up Due",

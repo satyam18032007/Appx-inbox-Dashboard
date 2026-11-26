@@ -290,23 +290,27 @@ async function takeWhatsAppThread(user, phone) {
 
 async function sendOwnerAlert({ user, message }) {
   const alertPhone = normalizePhone(user.owner_alert_phone || "");
-  if (!alertPhone) return;
+  if (!alertPhone) return false;
+  let accepted = false;
 
   if (user.fast2sms_api_key) {
     try {
-      await fetch("https://www.fast2sms.com/dev/bulkV2", {
+      const response = await fetch("https://www.fast2sms.com/dev/bulkV2", {
         method: "POST",
         headers: { authorization: user.fast2sms_api_key, "Content-Type": "application/json" },
         body: JSON.stringify({ route: "q", message: message.slice(0, 300), language: "english", numbers: alertPhone.slice(-10) }),
       });
-    } catch (e) {}
+      accepted = response.ok && (await response.json()).return === true;
+    } catch {}
   }
 
   if (user.whatsapp_token && user.phone_number_id) {
     try {
-      await sendMetaWhatsApp({ user, toPhone: alertPhone, text: message, mode: "reply" });
-    } catch (e) {}
+      const id = await sendMetaWhatsApp({ user, toPhone: alertPhone, text: message, mode: "reply" });
+      accepted = Boolean(id) || accepted;
+    } catch {}
   }
+  return accepted;
 }
 
 function getGeminiApiKey() {
@@ -369,7 +373,7 @@ STRICT OFFICIAL SALES QUALIFIER GUARDRAILS:
    - If customer sends a voice note, listen to it carefully, summarize what they said in "voice_transcript", and respond directly to their points.
 4. ADAPTIVE QUALIFICATION: There is no target number of questions. Ask at most one useful question per turn, and only if the information is missing and matters to the next action. Skip questions already answered. If the customer asks for a relevant resource or the chat already establishes enough interest and context, send the matching asset now, even after zero questions. Available categories: [${categoriesList || "none"}]. Assets already sent: ${lead.assets_sent ? "yes" : "no"}. Select General only as a relevant fallback. Never send a random category.
    Optional safety ceiling: ${maxQ > 0 ? maxQ : "off"}. Qualification questions already asked: ${lead.ai_questions_asked || 0}. If the ceiling is reached, proceed with a useful answer or relevant asset, or stay silent. Do not ask another qualification question.
-5. DEMO DETECTION: Set demo_booked only when the customer actually proposes or confirms a demo time. Put the supplied time in demo_time_text. Requesting a brochure, asking for information, or suggesting a time for something unrelated does not book a demo.
+5. DEMO HANDOFF: Set demo_booked only when the customer proposes or accepts a specific demo slot. This flag requests a human follow-up. Put their stated date, time and timezone in demo_time_text as supplied. In the customer reply say the team will check availability and share the meeting link after confirming. Never state that a demo is booked, that a calendar invitation has been sent, or that a meeting link exists. Do not create or invent a meeting URL. A brochure request or a vague interest in a demo does not establish a slot. If date or time is unclear, ask one short scheduling question.
 
 These guardrails take precedence over any suggested fixed questionnaire in the business script. Set asked_a_question only if reply contains a new qualification question. Asking for a demo time is a separate action.
 Return STRICT JSON ONLY:

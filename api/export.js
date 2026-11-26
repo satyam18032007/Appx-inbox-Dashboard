@@ -43,6 +43,7 @@ module.exports = async (req, res) => {
       { Metric: "Total Campaign Leads", Value: total },
       { Metric: "Responded", Value: responded },
       { Metric: "No Response", Value: total - responded },
+      { Metric: "Demo Requested", Value: leads.filter((l) => l.status === "Demo Requested").length },
       { Metric: "Demo Booked", Value: leads.filter((l) => l.status === "Demo Booked").length },
       { Metric: "Demo Done", Value: leads.filter((l) => l.status === "Demo Done").length },
       { Metric: "Follow-up Due", Value: leads.filter((l) => l.status === "Follow-up Due").length },
