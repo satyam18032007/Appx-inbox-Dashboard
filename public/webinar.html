@@ -69,7 +69,8 @@
   </main>
 
   <!-- Live Video Room View (HD Video, Audio, Screen Share, Chat, Polls) -->
-  <section id="room-view" class="hidden flex-1 flex flex-col">
+  <section id="room-view" class="hidden relative flex-1 flex flex-col">
+    <div id="attendee-watermark" aria-hidden="true" class="pointer-events-none absolute inset-0 z-10 grid grid-cols-2 place-items-center overflow-hidden"></div>
     <div id="jitsi-container" class="flex-1 w-full min-h-[calc(100vh-56px)] bg-black"></div>
   </section>
 
@@ -79,7 +80,21 @@
     const isHost = params.get("host") === "1";
     let currentWebinar = null;
 
-    function launchRoom(displayName) {
+    function launchRoom(displayName, attendeeSuffix, attendanceTicket) {
+      if (typeof JitsiMeetExternalAPI !== "function") {
+        throw new Error("The video room could not load. Refresh the page and try again.");
+      }
+      const watermark = document.getElementById("attendee-watermark");
+      const label = attendeeSuffix
+        ? displayName.trim().slice(0, 50) + " · ••••" + attendeeSuffix
+        : "AppX Webinar";
+      watermark.replaceChildren(...Array.from({ length: 6 }, () => {
+        const mark = document.createElement("span");
+        mark.className = "-rotate-12 max-w-full truncate px-2 text-xs sm:text-sm font-semibold text-white opacity-40";
+        mark.style.textShadow = "0 1px 3px black";
+        mark.textContent = label;
+        return mark;
+      }));
       document.getElementById("reg-view").classList.add("hidden");
       document.getElementById("room-view").classList.remove("hidden");
       document.getElementById("wb-live-badge").classList.remove("hidden");
@@ -95,18 +110,39 @@
           prejoinPageEnabled: false,
           startWithAudioMuted: !isHost,
           startWithVideoMuted: !isHost,
-          disableDeepLinking: true
+          disableDeepLinking: true,
+          localRecording: { disable: true },
+          fileRecordingsEnabled: false,
+          liveStreamingEnabled: false,
+          toolbarButtons: [
+            "microphone", "camera", "desktop", "chat", "raisehand",
+            "participants-pane", "tileview", "select-background", "settings", "hangup"
+          ]
         },
         interfaceConfigOverwrite: {
           SHOW_JITSI_WATERMARK: false,
-          SHOW_WATERMARK_FOR_GUESTS: false,
-          TOOLBAR_BUTTONS: [
-            "microphone", "camera", "desktop", "chat", "raisehand",
-            "participants-pane", "tileview", "fullscreen", "settings", "hangup"
-          ]
+          SHOW_WATERMARK_FOR_GUESTS: false
         }
       };
-      new JitsiMeetExternalAPI(domain, options);
+      const room = new JitsiMeetExternalAPI(domain, options);
+      if (attendanceTicket) {
+        room.addListener("videoConferenceJoined", async () => {
+          for (let attempt = 0; attempt < 2; attempt++) {
+            try {
+              const response = await fetch("/api/webinars?action=attend", {
+                method: "POST", headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ ticket: attendanceTicket }), keepalive: true,
+              });
+              if (response.ok || response.status < 500) return;
+            } catch {}
+          }
+        });
+      }
+      const iframe = room.getIFrame();
+      iframe.removeAttribute("allowfullscreen");
+      const permissions = (iframe.getAttribute("allow") || "").split(";")
+        .filter(permission => !/^fullscreen\b/i.test(permission.trim()));
+      iframe.setAttribute("allow", [...permissions, "fullscreen 'none'"].join(";"));
     }
 
     async function loadWebinar() {
@@ -157,14 +193,16 @@
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Registration failed");
-        launchRoom(fd.name);
+        launchRoom(fd.name, data.attendee_suffix, data.attendance_ticket);
       } catch (err) {
         errEl.textContent = err.message;
         errEl.classList.remove("hidden");
       }
     });
 
-    loadWebinar();
+    loadWebinar().catch(error => {
+      document.getElementById("reg-title").textContent = error.message || "Could not open webinar.";
+    });
   </script>
 </body>
 </html>

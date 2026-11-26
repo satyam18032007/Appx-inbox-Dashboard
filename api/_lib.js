@@ -135,7 +135,7 @@ async function verifyMetaCredentials(token, phoneNumberId, version = "v21.0") {
   };
 }
 
-async function downloadMetaMediaBase64(user, mediaId) {
+async function downloadMetaMediaBase64(user, mediaId, maxBytes = 12 * 1024 * 1024) {
   if (!user.whatsapp_token || !mediaId) return null;
   const version = user.graph_version || "v21.0";
   const metaResp = await fetch(`https://graph.facebook.com/${version}/${encodeURIComponent(mediaId)}`, {
@@ -153,11 +153,35 @@ async function downloadMetaMediaBase64(user, mediaId) {
     headers: { Authorization: `Bearer ${user.whatsapp_token}` },
   });
   if (!binResp.ok) return null;
-  const arrayBuf = await binResp.arrayBuffer();
+  if (Number(binResp.headers.get("content-length")) > maxBytes) return null;
+  const chunks = [];
+  let size = 0;
+  for await (const chunk of binResp.body) {
+    size += chunk.length;
+    if (size > maxBytes) return null;
+    chunks.push(chunk);
+  }
   return {
     mimeType: metaData.mime_type || "audio/ogg",
-    base64: Buffer.from(arrayBuf).toString("base64"),
+    base64: Buffer.concat(chunks).toString("base64"),
   };
+}
+
+async function uploadWhatsAppVoice(user, data) {
+  if (!user.whatsapp_token || !/^\d+$/.test(user.phone_number_id || "")) throw new Error("Connect WhatsApp first.");
+  const version = /^v\d+\.\d+$/.test(user.graph_version || "") ? user.graph_version : "v21.0";
+  const form = new FormData();
+  form.set("messaging_product", "whatsapp");
+  form.set("file", new Blob([data], { type: "audio/ogg" }), "voice-note.ogg");
+  const response = await fetch(`https://graph.facebook.com/${version}/${user.phone_number_id}/media`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${user.whatsapp_token}` },
+    body: form,
+    signal: AbortSignal.timeout(15000),
+  });
+  const result = await response.json();
+  if (!response.ok || !result.id) throw new Error(result.error?.message || "Meta could not upload the voice note.");
+  return String(result.id);
 }
 
 async function sendMetaWhatsApp({
@@ -170,6 +194,7 @@ async function sendMetaWhatsApp({
   templateParams = [],
   mediaUrl = "",
   mediaType = "document",
+  audioMediaId = "",
 }) {
   if (!user.whatsapp_token || !user.phone_number_id) {
     throw new Error("Meta WhatsApp Cloud API not connected.");
@@ -192,6 +217,8 @@ async function sendMetaWhatsApp({
       ];
     }
     payload = { messaging_product: "whatsapp", to: toPhone, type: "template", template: tpl };
+  } else if (mode === "voice" && audioMediaId) {
+    payload = { messaging_product: "whatsapp", to: toPhone, type: "audio", audio: { id: audioMediaId, voice: true } };
   } else if (mode === "media" && mediaUrl) {
     const mType = ["image", "document", "video"].includes(mediaType) ? mediaType : "document";
     payload = {
@@ -427,6 +454,7 @@ module.exports = {
   sanitizeUser,
   verifyMetaCredentials,
   downloadMetaMediaBase64,
+  uploadWhatsAppVoice,
   sendMetaWhatsApp,
   describeWhatsAppTemplate,
   getApprovedWhatsAppTemplate,

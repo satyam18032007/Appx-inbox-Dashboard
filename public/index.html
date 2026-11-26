@@ -28,6 +28,7 @@
     #app-shell[data-role="viewer"] :is(#chat-composer, #btn-save-details, #btn-inbox-add, #btn-dash-add-lead) { display: none !important; }
   </style>
   <script src="/keyboard.js" defer></script>
+  <script src="/vendor/opus-recorder/recorder.min.js" defer></script>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
 
@@ -202,6 +203,13 @@
             </div>
           </div>
 
+          <div id="voice-composer" class="hidden flex flex-wrap items-center gap-2 text-xs">
+            <button type="button" id="voice-record" class="rounded-lg border border-indigo-200 px-3 py-2 text-indigo-700">Record voice note</button>
+            <audio id="voice-preview" class="hidden max-w-full" controls preload="none"></audio>
+            <button type="button" id="voice-send" class="hidden rounded-lg bg-indigo-600 px-3 py-2 text-white">Send voice note</button>
+            <button type="button" id="voice-discard" class="hidden rounded-lg border px-3 py-2">Discard</button>
+            <span id="voice-status" role="status"></span>
+          </div>
           <form id="chat-send-form" class="flex items-center gap-2.5">
             <input id="chat-input" type="text" enterkeyhint="send" placeholder="Write a reply..." class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
             <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition shrink-0 flex items-center gap-1.5 shadow-sm">
@@ -737,6 +745,8 @@
     }
 
     function signOutLocal() {
+      clearVoiceDraft();
+      clearVoicePlayback();
       state.token = null; state.user = null; state.leads = []; state.activeLeadId = null;
       state.messagesByLead = {};
       document.getElementById("chat-messages").replaceChildren();
@@ -961,9 +971,10 @@
               <div class="flex flex-wrap items-start justify-between gap-2">
                 <div>
                   <div class="font-semibold text-base text-slate-900">${escapeHtml(w.title)}</div>
-                  <div class="text-xs text-slate-500 mt-0.5">Host: ${escapeHtml(w.host_name)} • ${escapeHtml(w.scheduled_at)} • <strong>${w.registration_count || 0} registered</strong></div>
+                  <div class="text-xs text-slate-500 mt-0.5">Host: ${escapeHtml(w.host_name)} • ${escapeHtml(w.scheduled_at)} • <strong>${w.registration_count || 0} registered</strong> • <strong>${w.joined_count || 0} joined</strong></div>
                 </div>
-                <div class="flex items-center gap-1.5">
+                <div class="flex flex-wrap items-center gap-1.5">
+                  <a href="/api/webinars?action=export&amp;id=${encodeURIComponent(w.id)}" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium">Download Excel</a>
                   <button data-copy-text="${escapeHtml(regUrl)}" class="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium">Copy Reg Link</button>
                   <a href="${hostUrl}" target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium">Start Live Room ↗</a>
                   <button data-del-webinar="${w.id}" class="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium">Del</button>
@@ -1031,6 +1042,8 @@
           (active ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600");
       });
       document.getElementById("template-picker-bar").classList.toggle("hidden", mode !== "template");
+      document.getElementById("voice-composer").classList.toggle("hidden", mode !== "reply");
+      if (mode !== "reply" && voiceDraft?.recording) clearVoiceDraft();
     }
 
     function refreshReplyWindow(lead, selectMode = false) {
@@ -1046,6 +1059,7 @@
 
     async function openChatThread(leadId) {
       const switching = leadId !== state.activeLeadId;
+      if (switching) { clearVoiceDraft(); clearVoicePlayback(); }
       state.activeLeadId = leadId;
       const lead = state.leads.find(l => l.id === leadId);
       if (!lead) return;
@@ -1080,11 +1094,15 @@
       const token = state.token;
       const { messages = [] } = await apiFetch(`/api/messages?lead_id=${leadId}`);
       if (token !== state.token || leadId !== state.activeLeadId) return;
+      const sameMessages = JSON.stringify(state.messagesByLead[leadId]) === JSON.stringify(messages);
       state.messagesByLead[leadId] = messages;
       const lead = state.leads.find(l => l.id === leadId);
       if (lead) lead.unread_count = 0;
 
       const box = document.getElementById("chat-messages");
+      if (sameMessages && box.dataset.leadId === String(leadId)) { renderChatList(); return; }
+      box.dataset.leadId = String(leadId);
+      clearVoicePlayback();
       box.innerHTML = messages.length
         ? messages.map(m => {
           const isOut = m.direction === "outgoing";
@@ -1092,6 +1110,7 @@
             <div class="flex ${isOut ? "justify-end" : "justify-start"}">
               <div class="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isOut ? "appx-bubble-out rounded-br-sm" : "bg-white border border-slate-200 text-slate-900 rounded-bl-sm"}">
                 <div class="whitespace-pre-wrap">${escapeHtml(String(m.body || "").replace(/^\[Template: [^\]\n]+\]\n(?=\S)/, ""))}</div>
+                ${m.audio_media_id ? `<div class="mt-2"><button type="button" data-play-voice="${escapeHtml(m.id)}" class="rounded border px-2 py-1 text-xs">Play voice note</button></div>` : ""}
                 <div class="text-[10px] ${isOut ? "text-indigo-900/60 text-right" : "text-slate-400"} mt-1">
                   ${escapeHtml(fmtTime(m.created_at))} ${isOut ? `· ${escapeHtml(m.delivery_status || "Sent")}` : ""}
                 </div>
@@ -1239,7 +1258,173 @@
     function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
     function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
 
+    let voiceDraft = null;
+    const voicePlaybackUrls = new Set();
+
+    function clearVoicePlayback() {
+      for (const url of voicePlaybackUrls) URL.revokeObjectURL(url);
+      voicePlaybackUrls.clear();
+    }
+
+    function clearVoiceDraft() {
+      const draft = voiceDraft;
+      voiceDraft = null;
+      if (draft) {
+        clearTimeout(draft.timer);
+        if (draft.url) URL.revokeObjectURL(draft.url);
+        if (draft.recorder) void Promise.resolve(draft.recorder.close()).catch(() => {});
+      }
+      const preview = document.getElementById("voice-preview");
+      preview.pause();
+      preview.removeAttribute("src");
+      preview.classList.add("hidden");
+      document.getElementById("voice-send").classList.add("hidden");
+      document.getElementById("voice-discard").classList.add("hidden");
+      document.getElementById("voice-status").textContent = "";
+      const record = document.getElementById("voice-record");
+      record.textContent = "Record voice note";
+      record.disabled = false;
+    }
+
+    function readVoiceBase64(blob) {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(",")[1]);
+        reader.onerror = () => reject(new Error("Unable to read recording."));
+        reader.readAsDataURL(blob);
+      });
+    }
+
+    function bindVoiceNotes() {
+      const record = document.getElementById("voice-record");
+      const preview = document.getElementById("voice-preview");
+      const send = document.getElementById("voice-send");
+      const discard = document.getElementById("voice-discard");
+      const status = document.getElementById("voice-status");
+
+      async function stopRecording(draft) {
+        if (voiceDraft !== draft || !draft.recording) return;
+        draft.recording = false;
+        record.disabled = true;
+        status.textContent = "Preparing preview…";
+        clearTimeout(draft.timer);
+        try {
+          await draft.recorder.stop();
+        } catch (error) {
+          if (voiceDraft === draft) { clearVoiceDraft(); showToast(error.message || "Recording could not finish."); }
+        }
+      }
+
+      record.addEventListener("click", async () => {
+        if (voiceDraft?.recording) { await stopRecording(voiceDraft); return; }
+        if (!state.activeLeadId || state.composerMode !== "reply") return;
+        if (!window.Recorder || !window.Recorder.isRecordingSupported()) {
+          showToast("This browser cannot record voice notes.");
+          return;
+        }
+        clearVoiceDraft();
+        record.disabled = true;
+        status.textContent = "Waiting for microphone permission…";
+        const draft = { leadId: state.activeLeadId };
+        voiceDraft = draft;
+        try {
+          draft.recorder = new window.Recorder({
+            encoderPath: "/vendor/opus-recorder/encoderWorker.min.js",
+            numberOfChannels: 1, encoderSampleRate: 24000, encoderBitRate: 24000,
+            mediaTrackConstraints: { echoCancellation: true, noiseSuppression: true },
+          });
+          draft.recorder.ondataavailable = data => {
+            if (voiceDraft !== draft) return;
+            const blob = new Blob([data], { type: "audio/ogg" });
+            if (!blob.size || blob.size > 2 * 1024 * 1024) {
+              clearVoiceDraft();
+              showToast("Voice note could not be prepared.");
+              return;
+            }
+            draft.blob = blob;
+            draft.url = URL.createObjectURL(blob);
+            preview.src = draft.url;
+            preview.classList.remove("hidden");
+            send.classList.remove("hidden");
+            discard.classList.remove("hidden");
+            record.textContent = "Record again";
+            record.disabled = false;
+            status.textContent = "Review the recording before sending.";
+          };
+          await draft.recorder.start();
+          if (voiceDraft !== draft) { await draft.recorder.close(); return; }
+          draft.recording = true;
+          discard.classList.remove("hidden");
+          record.textContent = "Stop recording";
+          record.disabled = false;
+          status.textContent = "Recording · up to 2 minutes";
+          draft.timer = setTimeout(() => void stopRecording(draft), 120000);
+        } catch (error) {
+          if (voiceDraft === draft) {
+            clearVoiceDraft();
+            showToast(error.message || "Microphone could not start.");
+          }
+        }
+      });
+
+      discard.addEventListener("click", clearVoiceDraft);
+      send.addEventListener("click", async () => {
+        const draft = voiceDraft;
+        if (!draft?.blob || draft.leadId !== state.activeLeadId || state.composerMode !== "reply") return;
+        send.disabled = true;
+        discard.disabled = true;
+        record.disabled = true;
+        try {
+          const voice_base64 = await readVoiceBase64(draft.blob);
+          if (voiceDraft !== draft || draft.leadId !== state.activeLeadId) return;
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({
+            lead_id: draft.leadId, mode: "voice", voice_base64,
+          }) });
+          if (voiceDraft === draft) clearVoiceDraft();
+          if (draft.leadId === state.activeLeadId) await refreshChatMessages(draft.leadId);
+          showToast("Voice note submitted to WhatsApp.");
+        } catch (error) {
+          if (draft.leadId === state.activeLeadId && error.code === 131070 && !state.user?.team_role) {
+            document.getElementById("btn-take-thread").classList.remove("hidden");
+          }
+          showToast(error.message);
+        } finally {
+          send.disabled = false;
+          discard.disabled = false;
+          if (voiceDraft === draft) record.disabled = false;
+        }
+      });
+
+      document.getElementById("chat-messages").addEventListener("click", async event => {
+        const button = event.target.closest("[data-play-voice]");
+        const leadId = state.activeLeadId;
+        if (!button || !leadId || button.disabled) return;
+        button.disabled = true;
+        try {
+          const query = new URLSearchParams({ lead_id: leadId, audio_id: button.dataset.playVoice });
+          const { audio } = await apiFetch("/api/messages?" + query);
+          if (!button.isConnected || leadId !== state.activeLeadId) return;
+          const bytes = Uint8Array.from(atob(audio.base64), char => char.charCodeAt(0));
+          const player = document.createElement("audio");
+          player.controls = true;
+          player.className = "max-w-full";
+          document.querySelectorAll("#chat-messages audio").forEach(previous => previous.pause());
+          const url = URL.createObjectURL(new Blob([bytes], { type: audio.mimeType }));
+          voicePlaybackUrls.add(url);
+          player.src = url;
+          button.replaceWith(player);
+          await player.play().catch(() => {});
+        } catch (error) {
+          showToast(error.message);
+        } finally {
+          button.disabled = false;
+        }
+      });
+      window.addEventListener("pagehide", () => { clearVoiceDraft(); clearVoicePlayback(); });
+    }
+
     function bindEvents() {
+      bindVoiceNotes();
       const teamStatus = document.getElementById("team-status");
       document.getElementById("btn-team").addEventListener("click", async () => {
         document.getElementById("team-dialog").showModal();

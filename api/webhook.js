@@ -88,14 +88,13 @@ module.exports = async (req, res) => {
             const waId = msg.id || "";
             const mtype = msg.type || "text";
             let text = "";
-            let audioMedia = null;
+            const audioId = mtype === "audio" ? msg.audio?.id : null;
             if (mtype === "text") text = msg.text?.body || "";
             else if (mtype === "button") text = msg.button?.text || "[Button Reply]";
             else if (mtype === "interactive") {
               text = msg.interactive?.button_reply?.title || msg.interactive?.list_reply?.title || "[Interactive Reply]";
             } else if (mtype === "audio" && msg.audio?.id) {
               text = "[Voice Note received]";
-              audioMedia = await downloadMetaMediaBase64(user, msg.audio.id);
             } else {
               text = `[${mtype} message]`;
             }
@@ -163,6 +162,7 @@ module.exports = async (req, res) => {
               direction: "incoming",
               body: text,
               wa_message_id: waId,
+              ...(audioId ? { audio_media_id: String(audioId) } : {}),
               delivery_status: "received",
             });
             processed++;
@@ -175,6 +175,7 @@ module.exports = async (req, res) => {
                   sb.from("asset_kits").select("*").eq("user_id", userId),
                 ]);
 
+                const audioMedia = audioId ? await downloadMetaMediaBase64(user, audioId) : null;
                 const aiOut = await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia });
                 if (aiOut) {
                   if (audioMedia && aiOut.voice_transcript) {

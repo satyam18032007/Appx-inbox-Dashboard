@@ -236,3 +236,6 @@ end;
 $$;
 revoke execute on function public.appx_allow_auth_request(text) from public, anon, authenticated;
 grant execute on function public.appx_allow_auth_request(text) to service_role;
+
+-- Preserve Meta audio IDs for authorized Inbox playback.
+alter table public.messages add column if not exists audio_media_id text;
