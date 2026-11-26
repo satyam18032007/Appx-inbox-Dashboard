@@ -1,4 +1,5 @@
-const { getSupabase, requireUser, sanitizeUser, getGeminiApiKey, generateGeminiText, runGeminiSalesAgent } = require("./_lib");
+const { randomUUID } = require("node:crypto");
+const { getSupabase, requireUser, sanitizeUser, getGeminiApiKey, generateGeminiText, runGeminiSalesAgent, ASSET_BUCKET, ASSET_MEDIA } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -49,6 +50,30 @@ module.exports = async (req, res) => {
       return res.status(200).json({ status: "saved", user: sanitizeUser(updated) });
     }
 
+    if (req.method === "POST" && req.query.action === "asset_upload") {
+      const { mime, size } = req.body || {};
+      const format = Object.hasOwn(ASSET_MEDIA, mime) ? ASSET_MEDIA[mime] : null;
+      if (!format || !Number.isSafeInteger(size) || size < 1 || size > format.maxMB * 1024 * 1024) {
+        return res.status(400).json({ error: "Use JPG/PNG up to 5 MB, MP4 up to 16 MB, or PDF up to 25 MB." });
+      }
+      const { data: bucket } = await sb.storage.getBucket(ASSET_BUCKET);
+      if (!bucket) {
+        const { error } = await sb.storage.createBucket(ASSET_BUCKET, {
+          public: false, fileSizeLimit: 25 * 1024 * 1024, allowedMimeTypes: Object.keys(ASSET_MEDIA),
+        });
+        if (error) {
+          const { data: existing } = await sb.storage.getBucket(ASSET_BUCKET);
+          if (!existing || existing.public) throw error;
+        }
+      } else if (bucket.public) {
+        throw new Error("Brochure storage must be private.");
+      }
+      const path = `${user.id}/${randomUUID()}.${format.extension}`;
+      const { data, error } = await sb.storage.from(ASSET_BUCKET).createSignedUploadUrl(path, { upsert: false });
+      if (error) throw error;
+      return res.status(200).json({ path, uploadUrl: data.signedUrl });
+    }
+
     // 1-Click AI Suggest Script based on user's business goal
     if (req.method === "POST" && req.query.action === "suggest") {
       const { goal = "AppX branded teaching app and social media marketing for educators" } = req.body || {};
@@ -82,10 +107,33 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const { category_name = "", keywords = "", message_text = "", asset_url = "", asset_type = "document" } = req.body || {};
+      const { category_name = "", keywords = "", message_text = "", asset_url = "", asset_type = "document", asset_path = "" } = req.body || {};
       if (!String(category_name).trim()) {
         return res.status(400).json({ error: "Category name (e.g. Physics, UPSC, GPSC) is required." });
       }
+      let attachment = String(asset_url).trim();
+      let attachmentType = ["document", "image", "video"].includes(asset_type) ? asset_type : "document";
+      if (asset_path) {
+        const prefix = `${user.id}/`;
+        if (attachment || typeof asset_path !== "string" || !asset_path.startsWith(prefix) ||
+            !/^[a-f0-9-]{36}\.(jpg|png|mp4|pdf)$/.test(asset_path.slice(prefix.length))) {
+          return res.status(400).json({ error: "Choose a local file or a public URL." });
+        }
+        const { data: file, error } = await sb.storage.from(ASSET_BUCKET).info(asset_path);
+        if (error || !file) return res.status(400).json({ error: "File upload is missing. Select the file and try again." });
+        const format = Object.hasOwn(ASSET_MEDIA, file.contentType) ? ASSET_MEDIA[file.contentType] : null;
+        if (!format || !asset_path.endsWith("." + format.extension) || !Number.isSafeInteger(file.size) || file.size < 1 || file.size > format.maxMB * 1024 * 1024) {
+          return res.status(400).json({ error: "The uploaded file type or size is not supported." });
+        }
+        attachment = "storage:" + asset_path;
+        attachmentType = format.type;
+      } else if (attachment && !/^https?:\/\//i.test(attachment)) {
+        return res.status(400).json({ error: "Enter a public HTTP(S) URL or select a file." });
+      }
+      if (!attachment && !String(message_text).trim()) {
+        return res.status(400).json({ error: "Add a brochure file, link, or message." });
+      }
+
       const { data: kit, error } = await sb
         .from("asset_kits")
         .insert({
@@ -93,8 +141,8 @@ module.exports = async (req, res) => {
           category_name: String(category_name).trim(),
           keywords: String(keywords || category_name).trim(),
           message_text: String(message_text).trim(),
-          asset_url: String(asset_url).trim(),
-          asset_type: ["document", "image", "video"].includes(asset_type) ? asset_type : "document",
+          asset_url: attachment,
+          asset_type: attachmentType,
         })
         .select("*")
         .single();

@@ -440,7 +440,12 @@
                 <option value="video">Video</option>
               </select>
             </div>
-            <textarea name="message_text" rows="2" placeholder="Voucher / Offer message sent with this kit (e.g. Special ₹2000 AppX Launch Voucher included!)" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white"></textarea>
+            <label class="block space-y-1">
+              <span>Or choose a brochure file from your laptop</span>
+              <input name="asset_file" type="file" accept="image/jpeg,image/png,video/mp4,application/pdf,.jpg,.jpeg,.png,.mp4,.pdf" class="block w-full rounded-lg border border-slate-300 bg-white p-2" />
+              <span class="block text-slate-600">JPG/PNG up to 5 MB, MP4 up to 16 MB, PDF up to 25 MB</span>
+            </label>
+            <textarea name="message_text" rows="3" maxlength="1024" placeholder="Message sent with the brochure (links, a sample, or an offer)" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white"></textarea>
             <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium">+ Add Category Asset Kit</button>
           </form>
 
@@ -1012,7 +1017,7 @@
             <div class="min-w-0">
               <div class="font-semibold text-slate-900">${escapeHtml(k.category_name)} <span class="text-[10px] font-normal text-slate-500">(${escapeHtml(k.keywords || k.category_name)})</span></div>
               <div class="text-slate-600 mt-0.5">${escapeHtml(k.message_text || "—")}</div>
-              ${k.asset_url ? `<div class="text-indigo-600 truncate mt-0.5">${escapeHtml(k.asset_url)}</div>` : ""}
+              ${k.asset_url ? `<div class="text-indigo-600 truncate mt-0.5">${escapeHtml(k.asset_url.startsWith("storage:") ? "Uploaded " + k.asset_type : k.asset_url)}</div>` : ""}
             </div>
             <button data-del-kit="${k.id}" class="px-2 py-1 rounded bg-rose-50 text-rose-700 font-medium shrink-0">Delete</button>
           </div>
@@ -1836,10 +1841,32 @@ Regards,
 
       document.getElementById("form-add-kit").addEventListener("submit", async e => {
         e.preventDefault();
+        const form = e.currentTarget;
+        const submit = form.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
+        const fields = new FormData(form);
+        const file = fields.get("asset_file");
+        fields.delete("asset_file");
+        const kit = Object.fromEntries(fields.entries());
+        submit.disabled = true;
         try {
-          await apiFetch("/api/ai", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
-          e.target.reset(); await loadAiAndKits(); showToast("Category asset kit added!");
+          if (file?.name) {
+            if (kit.asset_url.trim()) throw new Error("Choose a file or clear the public URL field.");
+            submit.textContent = "Uploading brochure...";
+            const { path, uploadUrl } = await apiFetch("/api/ai?action=asset_upload", {
+              method: "POST", body: JSON.stringify({ mime: file.type, size: file.size }),
+            });
+            const upload = new FormData();
+            upload.append("cacheControl", "3600");
+            upload.append("", file);
+            const uploaded = await fetch(uploadUrl, { method: "PUT", body: upload });
+            if (!uploaded.ok) throw new Error("Brochure upload failed. Please try again.");
+            kit.asset_path = path;
+          }
+          await apiFetch("/api/ai", { method: "POST", body: JSON.stringify(kit) });
+          form.reset(); await loadAiAndKits(); showToast("Category asset kit added!");
         } catch (err) { showToast(err.message); }
+        finally { submit.disabled = false; submit.textContent = "+ Add Category Asset Kit"; }
       });
 
       document.getElementById("asset-kits-list").addEventListener("click", async e => {

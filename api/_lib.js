@@ -430,11 +430,30 @@ function normalizeSalesDecision(result) {
   };
 }
 
+const ASSET_BUCKET = "appx-brochure-assets";
+const ASSET_MEDIA = {
+  "image/jpeg": { type: "image", extension: "jpg", maxMB: 5 },
+  "image/png": { type: "image", extension: "png", maxMB: 5 },
+  "video/mp4": { type: "video", extension: "mp4", maxMB: 16 },
+  "application/pdf": { type: "document", extension: "pdf", maxMB: 25 },
+};
+
+function selectAssetKit(kits, detectedCategory) {
+  const category = String(detectedCategory || "").trim().toLowerCase();
+  if (!category) return null;
+  const available = kits.filter(kit => kit.asset_url || kit.message_text);
+  const exact = available.filter(kit => kit.category_name.toLowerCase() === category);
+  const keywordMatches = available.filter(kit => String(kit.keywords || "").toLowerCase()
+    .split(",").some(keyword => keyword.trim() === category));
+  const matches = exact.length ? exact : keywordMatches;
+  return matches.length ? matches[crypto.randomInt(matches.length)] : null;
+}
+
 async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia = null, latestMessage = "" }) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return null;
 
-  const categoriesList = (assetKits || []).map((k) => `${k.category_name} (keywords: ${k.keywords || k.category_name})`).join("; ");
+  const categoriesList = [...new Set((assetKits || []).filter(k => k.asset_url || k.message_text).map(k => `${k.category_name} (keywords: ${k.keywords || k.category_name})`))].join("; ");
   const maxQ = Number(user.ai_max_questions ?? 0);
   const customInstructions =
     user.ai_system_prompt ||
@@ -523,5 +542,8 @@ module.exports = {
   sendOwnerAlert,
   getGeminiApiKey,
   generateGeminiText,
+  ASSET_BUCKET,
+  ASSET_MEDIA,
+  selectAssetKit,
   runGeminiSalesAgent,
 };

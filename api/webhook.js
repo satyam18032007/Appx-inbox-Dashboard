@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent } = require("./_lib");
+const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit } = require("./_lib");
 
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
@@ -261,13 +261,17 @@ module.exports = async (req, res) => {
 
                   // 2. Send Category-Based Brochure / Voucher / Assets once qualified
                   if (aiOut.send_assets && !lead.assets_sent && assetKits.length > 0) {
-                    const targetCat = String(aiOut.detected_category || "").toLowerCase();
-                    const matchedKit =
-                      assetKits.find((k) => k.category_name.toLowerCase() === targetCat) ||
-                      assetKits.find((k) => String(k.keywords || "").toLowerCase().split(",").some((kw) => kw.trim() && targetCat.includes(kw.trim()))) ||
-                      assetKits.find((k) => k.category_name.toLowerCase() === "general");
+                    const matchedKit = selectAssetKit(assetKits, aiOut.detected_category);
 
-                    if (matchedKit && (matchedKit.asset_url || matchedKit.message_text)) {
+                    if (matchedKit) {
+                      let assetUrl = matchedKit.asset_url;
+                      if (assetUrl?.startsWith("storage:")) {
+                        const path = assetUrl.slice("storage:".length);
+                        if (!path.startsWith(`${userId}/`)) throw new Error("Invalid brochure file ownership.");
+                        const { data, error } = await sb.storage.from(ASSET_BUCKET).createSignedUrl(path, 3600);
+                        if (error) throw error;
+                        assetUrl = data.signedUrl;
+                      }
                       let assetWaId;
                       if (matchedKit.asset_url) {
                         try {
@@ -276,7 +280,7 @@ module.exports = async (req, res) => {
                             toPhone: fromPhone,
                             text: matchedKit.message_text || `AppX ${matchedKit.category_name} Brochure`,
                             mode: "media",
-                            mediaUrl: matchedKit.asset_url,
+                            mediaUrl: assetUrl,
                             mediaType: matchedKit.asset_type || "document",
                           });
                         } catch (e) {
@@ -284,14 +288,14 @@ module.exports = async (req, res) => {
                           assetWaId = await sendMetaWhatsApp({
                             user,
                             toPhone: fromPhone,
-                            text: `${matchedKit.message_text || ""}\n${matchedKit.asset_url}`.trim(),
+                            text: `${matchedKit.message_text || ""}\n${assetUrl}`.trim(),
                             mode: "reply",
                           });
                         }
                       } else if (matchedKit.message_text) {
                         assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
                       }
-                      const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || matchedKit.asset_url}`;
+                      const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || (matchedKit.asset_url?.startsWith("storage:") ? "Uploaded brochure" : matchedKit.asset_url)}`;
                       await sb.from("messages").insert({
                         user_id: userId,
                         lead_id: lead.id,
