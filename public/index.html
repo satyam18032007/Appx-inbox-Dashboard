@@ -27,6 +27,7 @@
     #app-shell:is([data-role="operator"], [data-role="viewer"]) :is([data-tab="ai"], [data-tab="webinars"], #btn-tpl-studio, #btn-meta-setup, #setup-banner, #btn-bulk-open, #btn-sheet-bulk, #btn-dash-bulk, #btn-dash-export, #btn-sheet-export, [data-action="delete-lead"]),
     #app-shell[data-role="viewer"] :is(#chat-composer, #btn-save-details, #btn-inbox-add, #btn-dash-add-lead) { display: none !important; }
   </style>
+  <script src="/keyboard.js" defer></script>
 </head>
 <body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
 
@@ -196,13 +197,13 @@
             </div>
             <div id="inbox-template-values" class="grid grid-cols-2 gap-2"></div>
             <div class="flex items-center gap-2">
-              <input id="template-name-input" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
-              <input id="template-lang-input" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
+              <input id="template-name-input" form="chat-send-form" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
+              <input id="template-lang-input" form="chat-send-form" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
             </div>
           </div>
 
           <form id="chat-send-form" class="flex items-center gap-2.5">
-            <input id="chat-input" type="text" placeholder="Write a reply..." class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
+            <input id="chat-input" type="text" enterkeyhint="send" placeholder="Write a reply..." class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
             <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition shrink-0 flex items-center gap-1.5 shadow-sm">
               <span>Send</span><span>↗</span>
             </button>
@@ -211,7 +212,7 @@
       </div>
 
       <!-- Details Drawer -->
-      <aside id="details-drawer" class="hidden w-full lg:w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto space-y-4 shrink-0">
+      <aside id="details-drawer" data-enter-action="btn-save-details" class="hidden w-full lg:w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto space-y-4 shrink-0">
         <div class="flex items-center justify-between border-b border-slate-200 pb-3">
           <h3 class="font-semibold text-sm text-slate-900">Lead &amp; AI Details</h3>
           <button id="btn-close-details" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
@@ -826,6 +827,7 @@
           label.textContent = context && context.trim() !== marker ? context.trim() : marker;
           const input = document.createElement("input");
           input.type = "text";
+          if (picker.id === "template-select-dropdown") input.setAttribute("form", "chat-send-form");
           input.className = "block w-full rounded border border-slate-300 px-2 py-1.5";
           input.value = Array.isArray(saved) && typeof saved[index] === "string" ? saved[index] : "";
           input.addEventListener("input", () => updateValues([...fields.querySelectorAll("input")].map(field => field.value)));
