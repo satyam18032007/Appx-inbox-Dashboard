@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, buildTemplateHeader } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader } = require("./_lib");
 
 const VALID_STATUSES = [
   "No Response",
@@ -46,6 +46,7 @@ module.exports = async (req, res) => {
         template_lang = "en",
         template_params,
         template_media_url = "",
+        template_image_base64,
         template_var_mode = "none", // 'none' | 'name' | 'name_business'
       } = req.body || {};
       if (!Array.isArray(rows) || rows.length === 0) {
@@ -63,8 +64,8 @@ module.exports = async (req, res) => {
       let fixedTemplateBody = null;
       if (approvedTemplate) {
         try {
-          templateHeader = buildTemplateHeader(approvedTemplate, template_media_url);
           if (template_params !== undefined) fixedTemplateBody = formatSentTemplate(approvedTemplate, template_params);
+          templateHeader = await resolveTemplateHeader(user, approvedTemplate, template_media_url, template_image_base64);
         } catch (error) {
           return res.status(400).json({ error: error.message });
         }

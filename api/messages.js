@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, buildTemplateHeader, takeWhatsAppThread } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, downloadMetaMediaBase64, uploadWhatsAppVoice, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, takeWhatsAppThread } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -36,7 +36,7 @@ module.exports = async (req, res) => {
     }
 
     if (req.method === "POST") {
-      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], template_media_url = "", voice_base64 } = req.body || {};
+      const { lead_id, body = "", mode = "reply", template_name = "", template_lang = "en", template_params = [], template_media_url = "", template_image_base64, voice_base64 } = req.body || {};
       const leadId = Number(lead_id);
       if (!leadId) return res.status(400).json({ error: "lead_id required." });
 
@@ -97,8 +97,8 @@ module.exports = async (req, res) => {
       let storedBody = mode === "voice" ? "[Voice Note sent]" : cleanText;
       if (approvedTemplate) {
         try {
-          templateHeader = buildTemplateHeader(approvedTemplate, template_media_url);
           storedBody = formatSentTemplate(approvedTemplate, template_params);
+          templateHeader = await resolveTemplateHeader(user, approvedTemplate, template_media_url, template_image_base64);
         } catch (error) {
           return res.status(400).json({ error: error.message });
         }

@@ -750,6 +750,10 @@
       const option = picker.selectedOptions[0];
       const count = Number(option?.dataset.vars || 0);
       const key = JSON.stringify([state.user?.id, option?.value, option?.dataset.lang]);
+      if (panel.dataset.templateKey === key && panel.querySelector("[data-template-image]")?.files.length) {
+        updateTemplatePreview(panel, option, [...panel.querySelectorAll("input:not([data-template-media]):not([data-template-image])")].map(field => field.value));
+        return;
+      }
       const previousMedia = panel.dataset.templateKey === key
         ? panel.querySelector("[data-template-media]")?.value : "";
       panel.replaceChildren();
@@ -764,7 +768,7 @@
         for (const otherId of ["inbox-template-values", "bulk-template-values"]) {
           const other = document.getElementById(otherId);
           if (other !== panel && other.dataset.templateKey === key) {
-            [...other.querySelectorAll("input:not([data-template-media])")].forEach((field, i) => { field.value = values[i] || ""; });
+            [...other.querySelectorAll("input:not([data-template-media]):not([data-template-image])")].forEach((field, i) => { field.value = values[i] || ""; });
             updateTemplatePreview(other, option, values);
           }
         }
@@ -821,6 +825,23 @@
         if (picker.id === "template-select-dropdown") media.setAttribute("form", "chat-send-form");
         label.append(media);
         panel.append(label);
+        if (headerType === "image") {
+          label.textContent = "Image header · public HTTPS link (optional)";
+          label.append(media);
+          const uploadLabel = document.createElement("label");
+          uploadLabel.className = "col-span-2 block";
+          uploadLabel.textContent = "Or choose a JPG or PNG from this device (up to 3 MB)";
+          const upload = document.createElement("input");
+          upload.type = "file";
+          upload.accept = "image/jpeg,image/png,.jpg,.jpeg,.png";
+          upload.dataset.templateImage = "";
+          upload.className = "block w-full rounded border border-slate-300 bg-white px-2 py-1.5";
+          if (picker.id === "template-select-dropdown") upload.setAttribute("form", "chat-send-form");
+          upload.addEventListener("change", () => { if (upload.files.length) media.value = ""; });
+          media.addEventListener("input", () => { if (media.value) upload.value = ""; });
+          uploadLabel.append(upload);
+          panel.append(uploadLabel);
+        }
       }
 
       const preview = document.createElement("p");
@@ -828,7 +849,7 @@
       preview.dataset.templatePreview = "";
       panel.append(preview);
       panel.dataset.templateKey = key;
-      updateTemplatePreview(panel, option, [...panel.querySelectorAll("input:not([data-template-media])")].map(field => field.value));
+      updateTemplatePreview(panel, option, [...panel.querySelectorAll("input:not([data-template-media]):not([data-template-image])")].map(field => field.value));
     }
 
     function updateTemplatePreview(panel, option, values) {
@@ -839,7 +860,7 @@
       preview.toggleAttribute("hidden", !preview.textContent);
     }
 
-    function readTemplateValues(pickerId, name, language) {
+    async function readTemplateValues(pickerId, name, language) {
       const picker = document.getElementById(pickerId);
       const option = picker.selectedOptions[0];
       if (!name || option?.value !== name || option?.dataset.lang !== language) {
@@ -847,11 +868,13 @@
       }
       const panel = templateValuesPanel(picker);
       const media = panel.querySelector("[data-template-media]");
-      if (media && !/^https:\/\//i.test(media.value.trim())) {
+      const file = panel.querySelector("[data-template-image]")?.files[0];
+      if (file && (file.size === 0 || file.size > 3 * 1024 * 1024)) throw new Error("Choose a JPG or PNG up to 3 MB.");
+      if (media && !file && !/^https:\/\//i.test(media.value.trim())) {
         media.focus();
         throw new Error("Enter a direct public HTTPS link for the template header.");
       }
-      const fields = [...panel.querySelectorAll("input:not([data-template-media])")];
+      const fields = [...panel.querySelectorAll("input:not([data-template-media]):not([data-template-image])")];
       const empty = fields.findIndex(field => !field.value.trim());
       if (empty >= 0) {
         fields[empty].focus();
@@ -859,7 +882,8 @@
       }
       return {
         template_params: fields.map(field => field.value.trim()),
-        template_media_url: media?.value.trim() || "",
+        template_media_url: file ? "" : media?.value.trim() || "",
+        template_image_base64: file ? await readFileBase64(file) : undefined,
       };
     }
 
@@ -1235,7 +1259,7 @@
       record.disabled = false;
     }
 
-    function readVoiceBase64(blob) {
+    function readFileBase64(blob) {
       return new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(String(reader.result).split(",")[1]);
@@ -1324,7 +1348,7 @@
         discard.disabled = true;
         record.disabled = true;
         try {
-          const voice_base64 = await readVoiceBase64(draft.blob);
+          const voice_base64 = await readFileBase64(draft.blob);
           if (voiceDraft !== draft || draft.leadId !== state.activeLeadId) return;
           await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({
             lead_id: draft.leadId, mode: "voice", voice_base64,
@@ -1568,7 +1592,7 @@
         submit.disabled = true;
         try {
           const templateFields = state.composerMode === "template"
-            ? readTemplateValues("template-select-dropdown", template_name, template_lang) : {};
+            ? await readTemplateValues("template-select-dropdown", template_name, template_lang) : {};
           await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, body, mode: state.composerMode, template_name, template_lang, ...templateFields }) });
           if (leadId === state.activeLeadId) {
             input.value = "";
@@ -1650,7 +1674,7 @@
               template_name: fd.get("template_name") || "",
               template_lang: fd.get("template_lang") || "en",
               ...(fd.get("send_template")
-                ? readTemplateValues("bulk-template-select", fd.get("template_name"), fd.get("template_lang") || "en")
+                ? await readTemplateValues("bulk-template-select", fd.get("template_name"), fd.get("template_lang") || "en")
                 : {})
             })
           });

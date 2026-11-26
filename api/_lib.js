@@ -168,11 +168,15 @@ async function downloadMetaMediaBase64(user, mediaId, maxBytes = 12 * 1024 * 102
 }
 
 async function uploadWhatsAppVoice(user, data) {
+  return uploadWhatsAppMedia(user, data, "audio/ogg", "voice-note.ogg", "voice note");
+}
+
+async function uploadWhatsAppMedia(user, data, mimeType, filename, label) {
   if (!user.whatsapp_token || !/^\d+$/.test(user.phone_number_id || "")) throw new Error("Connect WhatsApp first.");
   const version = /^v\d+\.\d+$/.test(user.graph_version || "") ? user.graph_version : "v21.0";
   const form = new FormData();
   form.set("messaging_product", "whatsapp");
-  form.set("file", new Blob([data], { type: "audio/ogg" }), "voice-note.ogg");
+  form.set("file", new Blob([data], { type: mimeType }), filename);
   const response = await fetch(`https://graph.facebook.com/${version}/${user.phone_number_id}/media`, {
     method: "POST",
     headers: { Authorization: `Bearer ${user.whatsapp_token}` },
@@ -180,7 +184,7 @@ async function uploadWhatsAppVoice(user, data) {
     signal: AbortSignal.timeout(15000),
   });
   const result = await response.json();
-  if (!response.ok || !result.id) throw new Error(result.error?.message || "Meta could not upload the voice note.");
+  if (!response.ok || !result.id) throw new Error(result.error?.message || `Meta could not upload the ${label}.`);
   return String(result.id);
 }
 
@@ -286,6 +290,25 @@ async function getApprovedWhatsAppTemplate(user, name, language) {
     item.name === name && item.language === language && item.status === "APPROVED");
   if (!template) throw new Error("Meta no longer lists this template and language as approved. Sync and select again.");
   return describeWhatsAppTemplate(template);
+}
+
+async function resolveTemplateHeader(user, template, mediaUrl, imageBase64) {
+  if (imageBase64 === undefined) return buildTemplateHeader(template, mediaUrl);
+  if (template.header_format !== "IMAGE" || mediaUrl) {
+    throw new Error("Select an Image header template and attach either a file or a link.");
+  }
+  const maxBytes = 3 * 1024 * 1024;
+  if (typeof imageBase64 !== "string" || imageBase64.length > maxBytes * 4 / 3 ||
+      !/^[A-Za-z0-9+/]+={0,2}$/.test(imageBase64) || imageBase64.length % 4) {
+    throw new Error("Select a JPEG or PNG image up to 3 MB.");
+  }
+  const data = Buffer.from(imageBase64, "base64");
+  const png = data.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex"));
+  const jpeg = data.subarray(0, 3).equals(Buffer.from("ffd8ff", "hex"));
+  if (!png && !jpeg) throw new Error("Select a valid JPEG or PNG image.");
+  const mime = png ? "image/png" : "image/jpeg";
+  const id = await uploadWhatsAppMedia(user, data, mime, png ? "header.png" : "header.jpg", "header image");
+  return { type: "header", parameters: [{ type: "image", image: { id } }] };
 }
 
 function buildTemplateHeader(template, mediaUrl = "") {
@@ -487,7 +510,7 @@ module.exports = {
   describeWhatsAppTemplate,
   getApprovedWhatsAppTemplate,
   formatSentTemplate,
-  buildTemplateHeader,
+  resolveTemplateHeader,
   takeWhatsAppThread,
   sendOwnerAlert,
   getGeminiApiKey,
