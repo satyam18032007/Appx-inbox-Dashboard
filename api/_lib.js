@@ -470,6 +470,37 @@ function selectAssetKit(kits, detectedCategory) {
 function matchCoachingSubject(kits, message) {
   const normalize = value => String(value || "").trim().toLowerCase()
     .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").replace(/^(math|maths)$/u, "mathematics").replace(/^bio$/u, "biology");
+  const words = value => String(value || "").toLowerCase()
+    .replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim();
+  const text = ` ${words(message)} `;
+  const contains = term => {
+    const keyword = words(term);
+    return Boolean(keyword) && text.includes(` ${keyword} `);
+  };
+  const hasGovernment = [
+    "government exam", "government exams", "govt exam", "govt exams", "sarkari exam", "sarkari exams",
+    "ssc", "railway", "railways", "rrb", "upsc", "gpsc", "psc", "banking exams", "सरकारी परीक्षा", "सरकारी एग्जाम", "रेलवे",
+  ].some(contains);
+  const available = kits.filter(kit => kit.asset_url || kit.message_text);
+  const rojgar = available.find(kit => /rojgar\s+with\s+ankit|rojgarwithankit/i.test(`${kit.category_name} ${kit.message_text || ""} ${kit.asset_url || ""}`));
+  if (hasGovernment) {
+    return rojgar?.category_name || available.find(kit => [kit.category_name, ...String(kit.keywords || "").split(",")]
+      .some(contains))?.category_name || "";
+  }
+  const science = available.find(kit => /science\s+and\s+fun|scienceandfun/i.test(`${kit.category_name} ${kit.message_text || ""} ${kit.asset_url || ""}`));
+  if (science && [
+    "school", "faculty", "class", "grade", "1 to 12", "science", "commerce", "arts", "humanities", "biology",
+    "bio", "physics", "chemistry", "math", "maths", "mathematics", "jee", "neet", "hindi", "english", "gujarati", "marathi",
+    "स्कूल", "कक्षा", "विज्ञान", "कॉमर्स", "आर्ट्स", "हिंदी", "गुजराती", "मराठी", "नीट", "ગુજરાતી",
+  ].some(contains)) return science.category_name;
+  const phraseMatches = new Map();
+  for (const kit of available) {
+    if ([kit.category_name, ...String(kit.keywords || "").split(",")].some(contains)) {
+      phraseMatches.set(normalize(kit.category_name), kit.category_name);
+    }
+  }
+  if (phraseMatches.size === 1) return phraseMatches.values().next().value;
+
   const subjects = String(message || "").split(/[,/&+\n]|\s+and\s+/iu).map(normalize).filter(Boolean);
   if (!subjects.length) return "";
   const categories = new Map();
