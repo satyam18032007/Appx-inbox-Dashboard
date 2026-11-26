@@ -81,7 +81,7 @@ module.exports = async (req, res) => {
       if (!apiKey) {
         return res.status(503).json({ error: "Gemini is not configured for this deployment." });
       }
-      const prompt = `Write a concise, practical system instruction (max 5 lines) for a Hinglish WhatsApp sales qualifier bot for this business: "${goal}". Ask one question only when the conversation needs it. Share a relevant kit as soon as the lead is ready, skip a separate reply when the kit is enough, and stay silent when nothing is needed. Return plain text only.`;
+      const prompt = `Write a concise, practical system instruction (max 5 lines) for a WhatsApp sales qualifier bot that uses professional English by default and Roman Hindi when the customer uses Hindi or Hinglish for this business: "${goal}". Ask one question only when the conversation needs it. Share a relevant kit as soon as the lead is ready, skip a separate reply when the kit is enough, and stay silent when nothing is needed. Return plain text only.`;
       const suggested = await generateGeminiText(apiKey, {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });

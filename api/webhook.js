@@ -292,11 +292,15 @@ module.exports = async (req, res) => {
                   const qualificationAllowed = !atCeiling || !aiOut.asked_a_question;
                   let reply = qualificationAllowed ? aiOut.reply : "";
                   if (!reply && aiOut.demo_booked) {
-                    reply = "Demo time share karne ke liye thanks. Team availability check karke slot aur meeting link confirm karegi.";
+                    reply = aiOut.reply_language === "roman_hindi"
+                      ? "Demo time share karne ke liye thanks. Team availability check karke slot confirm karegi aur meeting link share karegi."
+                      : "Thanks for sharing your preferred time. Our team will check availability and confirm the slot and meeting link.";
                   }
                   const reschedule = /^reschedule[.!?]?$/i.test(text.trim());
                   if (!reply && (reschedule || aiOut.demo_requested)) {
-                    reply = "Sure, demo ke liye apni preferred date aur time bata dijiye.";
+                    reply = aiOut.reply_language === "roman_hindi"
+                      ? "Ji, demo ke liye apni preferred date aur time bata dijiye."
+                      : "What date and time would work best for your demo?";
                   }
                   if (reply) {
                     const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });

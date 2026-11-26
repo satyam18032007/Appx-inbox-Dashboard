@@ -424,6 +424,7 @@ function normalizeSalesDecision(result) {
   const text = key => typeof result[key] === "string" ? result[key].trim() : "";
   return {
     reply: text("reply"),
+    reply_language: result.reply_language === "roman_hindi" ? "roman_hindi" : "default",
     voice_transcript: text("voice_transcript"),
     detected_category: text("detected_category"),
     send_assets: result.send_assets === true,
@@ -443,7 +444,7 @@ const CAMPAIGN_FEATURES = `Thanks for your interest! Here’s what AppX offers f
 ✅ Test Series, PDFs, Books and Digital Content
 
 Our team can confirm the terms and show how these features fit your coaching business.`;
-const CAMPAIGN_SUBJECT_QUESTION = "Aap kaunsa subject, class ya exam padhate hain? Uske hisaab se main aapke liye relevant example share kar sakta hoon.";
+const CAMPAIGN_SUBJECT_QUESTION = "Which subject, grade, or exam do you teach? I can share an example that matches your coaching business.";
 
 const ASSET_BUCKET = "appx-brochure-assets";
 const ASSET_MEDIA = {
@@ -479,11 +480,11 @@ async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia 
 STRICT OFFICIAL SALES QUALIFIER GUARDRAILS:
 1. STAY ON-TOPIC & PROFESSIONAL: Never make random/off-topic jokes, never fabricate prices, discounts, or fake promises. If asked exact pricing before demo, politely say pricing depends on their app & social media requirements and will be shared clearly on the 15-min live demo.
 2. TURN DECISION: Read the conversation, including the latest text or voice note. Choose whichever action helps: a short reply, an asset alone, both if each adds value, or no outbound action. Set reply to an empty string for asset-only delivery, acknowledgements such as "thanks" or "ok" that need no answer, clear conversation endings, and opt-outs. Do not send assets on acknowledgements or opt-outs. Always answer a direct product question, a demo or rescheduling request, or a short answer to your previous question (for example, "YT pe" after asking which channel they use). Acknowledge a proposed slot and explain the confirmation step. If they only say "reschedule", ask for their preferred date and time. A qualification ceiling, missing brochure, old appointment reminder, or previously booked demo must never suppress those replies. If the requested detail is unknown, say what the team needs to confirm.
-3. ADAPTIVE LANGUAGE MIRRORING:
-   - If customer writes/speaks in Hindi (Devanagari), reply in polite Hindi (Devanagari).
-   - If customer writes/speaks in Hinglish (Roman Hindi), reply in polite Hinglish.
-   - If customer writes/speaks in English, reply in crisp professional English.
-   - If customer sends a voice note, listen to it carefully, summarize what they said in "voice_transcript", and respond directly to their points.
+3. REPLY LANGUAGE (overrides language preferences in the business script):
+   - Default to concise, natural, professional English. Use English when the customer writes in English or only says YES, OK, or another ambiguous short reply, unless earlier customer messages clearly established a different language.
+   - If the customer clearly uses Hindi or Hinglish, use natural Hindi/Hinglish in Latin letters (Roman Hindi), even if the customer wrote in Devanagari. Example: "Ji, aap kaunsa subject padhate hain?" Do not translate the Hindi reply into English or write it in Devanagari.
+   - If the customer clearly uses another language, respond in that language using Latin transliteration when needed and when you can do so reliably. If uncertain, use professional English. Never infer language from the customer's name, a business template, or an earlier agent message.
+   - Match clear changes in the customer's language. If a voice note is attached, summarize its content in voice_transcript and apply the same language rule to the reply.
 4. ADAPTIVE QUALIFICATION: There is no target number of questions. Ask at most one useful question per turn, and only if the information is missing and matters to the next action. Skip questions already answered. If the customer asks for a relevant resource or the chat already establishes enough interest and context, send the matching asset now, even after zero questions. Available categories: [${categoriesList || "none"}]. Assets already sent: ${lead.assets_sent ? "yes" : "no"}. Select General only as a relevant fallback. Never send a random category.
    Optional safety ceiling: ${maxQ > 0 ? maxQ : "off"}. Qualification questions already asked: ${lead.ai_questions_asked || 0}. If the ceiling is reached, answer the customer without adding a qualification question. Silence is only appropriate under the turn decision above. Do not ask another qualification question.
 5. COACHING CAMPAIGN: The lead stage is ${lead.ai_stage || "qualifying"}. If it is awaiting_coaching_subject, use their subject, class, or exam to select an available matching kit. Do not repeat the subject question if they gave you that information. When sending the kit, suggest a demo if appropriate. Once it is sent, wait for their interest rather than repeatedly asking.
@@ -497,7 +498,8 @@ ${customInstructions}
 These guardrails take precedence over any suggested fixed questionnaire in the business script. Set asked_a_question only if reply contains a new qualification question. Asking for a demo time is a separate action.
 Return STRICT JSON ONLY:
 {
-  "reply": "short reply in the customer language, or empty string",
+  "reply": "short reply following the language rules, or empty string",
+  "reply_language": "roman_hindi if the customer uses Hindi/Hinglish, otherwise default",
   "voice_transcript": "short summary/transcript if audio was attached, else empty string",
   "detected_category": "exact category_name from kits or empty string",
   "send_assets": false,
