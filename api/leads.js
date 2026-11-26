@@ -43,10 +43,16 @@ module.exports = async (req, res) => {
         send_template = false,
         template_name = "",
         template_lang = "en",
+        template_params,
         template_var_mode = "none", // 'none' | 'name' | 'name_business'
       } = req.body || {};
       if (!Array.isArray(rows) || rows.length === 0) {
         return res.status(400).json({ error: "No contacts provided in CSV." });
+      }
+      if (send_template && !template_name) return res.status(400).json({ error: "Choose an approved template." });
+      if (send_template && template_params !== undefined &&
+          (!Array.isArray(template_params) || template_params.some(value => typeof value !== "string" || !value.trim()))) {
+        return res.status(400).json({ error: "Fill all template values before running the campaign." });
       }
       const today = new Date().toISOString().slice(0, 10);
       let added = 0;
@@ -102,12 +108,12 @@ module.exports = async (req, res) => {
         }
 
         if (send_template && template_name) {
-          const params =
+          const params = template_params ?? (
             template_var_mode === "name"
               ? [name]
               : template_var_mode === "name_business"
               ? [name, business]
-              : [];
+              : []);
           try {
             const waId = await sendMetaWhatsApp({
               user,

@@ -180,11 +180,14 @@ async function sendMetaWhatsApp({
 
   if (mode === "template" && templateName) {
     const tpl = { name: templateName, language: { code: templateLang || "en" } };
-    if (Array.isArray(templateParams) && templateParams.length > 0) {
+    if (!Array.isArray(templateParams) || templateParams.some(value => typeof value !== "string" || !value.trim())) {
+      throw new Error("Fill all template values before sending.");
+    }
+    if (templateParams.length > 0) {
       tpl.components = [
         {
           type: "body",
-          parameters: templateParams.map((p) => ({ type: "text", text: String(p || "-") })),
+          parameters: templateParams.map((p) => ({ type: "text", text: p.trim() })),
         },
       ];
     }
@@ -214,8 +217,33 @@ async function sendMetaWhatsApp({
     body: JSON.stringify(payload),
   });
   const data = await resp.json();
-  if (!resp.ok) throw new Error(data?.error?.message || `Meta WhatsApp API error (${resp.status})`);
+  if (!resp.ok) {
+    const error = new Error(data?.error?.message || `Meta WhatsApp API error (${resp.status})`);
+    error.metaCode = Number(data?.error?.code) || undefined;
+    throw error;
+  }
   return data?.messages?.[0]?.id || "";
+}
+
+async function takeWhatsAppThread(user, phone) {
+  if (!user.whatsapp_token || !/^\d+$/.test(user.phone_number_id || "") || !/^\d+$/.test(phone)) {
+    throw new Error("Connect a valid WhatsApp number before taking chat control.");
+  }
+  const response = await fetch(`https://api.facebook.com/business/whatsapp/phone_numbers/${user.phone_number_id}/thread_control`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${user.whatsapp_token}`,
+      "Content-Type": "application/json",
+      "X-API-Version": "1.0.0",
+    },
+    body: JSON.stringify({ messaging_product: "whatsapp", action: "take", to: phone }),
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json();
+  if (!response.ok || data.error || data.messaging_product !== "whatsapp") {
+    throw new Error(data.error?.message || "Meta did not confirm chat control.");
+  }
+  return data;
 }
 
 async function sendOwnerAlert({ user, message }) {
@@ -339,6 +367,7 @@ module.exports = {
   verifyMetaCredentials,
   downloadMetaMediaBase64,
   sendMetaWhatsApp,
+  takeWhatsAppThread,
   sendOwnerAlert,
   getGeminiApiKey,
   generateGeminiText,

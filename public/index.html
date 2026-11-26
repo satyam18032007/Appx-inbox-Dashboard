@@ -176,8 +176,9 @@
         <div id="chat-composer" class="hidden border-t border-slate-200 bg-white px-5 py-3 space-y-2.5">
           <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
             <div class="text-slate-500 flex items-center gap-1.5">
-              <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
-              <span>Reply window active (use Template mode for new contacts)</span>
+              <span id="reply-window-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+              <span id="reply-window-label">Select a conversation</span>
+              <button type="button" id="btn-take-thread" class="hidden px-2 py-1 rounded border border-indigo-300 text-indigo-700">Take chat control</button>
             </div>
             <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg" id="composer-mode-toggle">
               <button type="button" data-cmode="reply" class="cmode-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 font-medium shadow-sm">Reply</button>
@@ -193,6 +194,7 @@
               </select>
               <button type="button" id="btn-sync-templates" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-700">↻ Sync</button>
             </div>
+            <div id="inbox-template-values" class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto"></div>
             <div class="flex items-center gap-2">
               <input id="template-name-input" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
               <input id="template-lang-input" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
@@ -535,14 +537,7 @@
             <input id="bulk-tpl-name" name="template_name" placeholder="Template name" class="col-span-2 px-2.5 py-1.5 rounded-lg border border-slate-300" />
             <input id="bulk-tpl-lang" name="template_lang" value="en" placeholder="Lang (en)" class="px-2.5 py-1.5 rounded-lg border border-slate-300" />
           </div>
-          <div>
-            <label class="block text-slate-600 mb-1">Template Variables (if your template has {{1}}, {{2}})</label>
-            <select name="template_var_mode" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white">
-              <option value="none">No variables in template</option>
-              <option value="name">1 variable: {{1}} = Name</option>
-              <option value="name_business">2 variables: {{1}} = Name, {{2}} = Business</option>
-            </select>
-          </div>
+          <div id="bulk-template-values" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto"></div>
         </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" data-close-modal="modal-bulk-import" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
@@ -731,7 +726,11 @@
       }
       const data = await res.json().catch(() => ({}));
       if (res.status === 401 && token && token === state.token) { signOutLocal(); throw new Error("Session expired."); }
-      if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
+      if (!res.ok) {
+        const error = new Error(data.error || `Request failed (${res.status})`);
+        error.code = data.code;
+        throw error;
+      }
       return data;
     }
 
@@ -778,6 +777,64 @@
     }
 
     
+    function templateValuesPanel(picker) {
+      return document.getElementById(picker.id === "bulk-template-select" ? "bulk-template-values" : "inbox-template-values");
+    }
+
+    function renderTemplateValues(picker) {
+      const panel = templateValuesPanel(picker);
+      const option = picker.selectedOptions[0];
+      const count = Number(option?.dataset.vars || 0);
+      const key = JSON.stringify([state.user?.id, option?.value, option?.dataset.lang]);
+      panel.replaceChildren();
+      delete panel.dataset.templateKey;
+      if (!count) return;
+
+      let saved = [];
+      try { saved = JSON.parse(localStorage.getItem("appx-template:" + key) || "[]"); } catch {}
+      const heading = document.createElement("p");
+      heading.className = "col-span-2 text-slate-600";
+      heading.textContent = "Template values · the same text is sent to every recipient";
+      panel.append(heading);
+
+      for (let index = 0; index < count; index++) {
+        const label = document.createElement("label");
+        label.textContent = "{{" + (index + 1) + "}} ";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "block w-full rounded border border-slate-300 px-2 py-1.5";
+        input.value = Array.isArray(saved) && typeof saved[index] === "string" ? saved[index] : "";
+        input.addEventListener("input", () => {
+          const values = [...panel.querySelectorAll("input")].map(field => field.value);
+          try { localStorage.setItem("appx-template:" + key, JSON.stringify(values)); } catch {}
+          for (const otherId of ["inbox-template-values", "bulk-template-values"]) {
+            const other = document.getElementById(otherId);
+            if (other !== panel && other.dataset.templateKey === key) {
+              [...other.querySelectorAll("input")].forEach((field, i) => { field.value = values[i] || ""; });
+            }
+          }
+        });
+        label.append(input);
+        panel.append(label);
+      }
+      panel.dataset.templateKey = key;
+    }
+
+    function readTemplateValues(pickerId, name, language) {
+      const picker = document.getElementById(pickerId);
+      const option = picker.selectedOptions[0];
+      if (!name || option?.value !== name || option?.dataset.lang !== language) {
+        throw new Error("Select the approved template and language from the dropdown.");
+      }
+      const fields = [...templateValuesPanel(picker).querySelectorAll("input")];
+      const empty = fields.findIndex(field => !field.value.trim());
+      if (empty >= 0) {
+        fields[empty].focus();
+        throw new Error("Fill template value {{" + (empty + 1) + "}} before sending.");
+      }
+      return fields.map(field => field.value.trim());
+    }
+
     async function loadMetaTemplates(silent = false) {
       if (!state.user || !state.user.meta_configured || state.user.team_role === "viewer") return;
       try {
@@ -790,8 +847,15 @@
           : `<option value="">No approved templates available</option>`;
         const sel1 = document.getElementById("template-select-dropdown");
         const sel2 = document.getElementById("bulk-template-select");
-        if (sel1) sel1.innerHTML = optionsHtml;
-        if (sel2) sel2.innerHTML = optionsHtml;
+        for (const picker of [sel1, sel2]) {
+          if (!picker) continue;
+          const name = picker.value;
+          const language = picker.selectedOptions[0]?.dataset.lang;
+          picker.innerHTML = optionsHtml;
+          const same = [...picker.options].find(option => option.value === name && option.dataset.lang === language);
+          if (same) same.selected = true;
+          renderTemplateValues(picker);
+        }
         const studioList = document.getElementById("tpl-studio-list");
         if (studioList) {
           studioList.innerHTML = list.length
@@ -815,6 +879,8 @@
       document.getElementById("kpi-sent").textContent = campaignSent ?? "—";
       const previousUser = state.user;
       state.user = user; state.leads = leads || [];
+      const currentLead = state.leads.find(lead => lead.id === state.activeLeadId);
+      if (currentLead) refreshReplyWindow(currentLead);
       if (JSON.stringify(previousUser) !== JSON.stringify(user) || document.getElementById("app-shell").classList.contains("hidden")) {
         syncUserHeader();
       }
@@ -918,7 +984,29 @@
         : `<div class="p-8 text-center text-xs text-slate-400">No conversations yet.</div>`;
     }
 
+    function setComposerMode(mode) {
+      state.composerMode = mode;
+      document.querySelectorAll(".cmode-btn").forEach(button => {
+        const active = button.dataset.cmode === mode;
+        button.className = "cmode-btn px-2.5 py-1 rounded-md font-medium disabled:opacity-50 " +
+          (active ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600");
+      });
+      document.getElementById("template-picker-bar").classList.toggle("hidden", mode !== "template");
+    }
+
+    function refreshReplyWindow(lead, selectMode = false) {
+      const last = Date.parse(lead.last_incoming_at);
+      const now = Date.now();
+      const open = last <= now && now - last < 86400000;
+      document.getElementById("reply-window-label").textContent = open
+        ? "Reply window active" : "Start with an approved template";
+      document.getElementById("reply-window-dot").className = "w-2 h-2 rounded-full " + (open ? "bg-emerald-500" : "bg-slate-400");
+      document.querySelector('[data-cmode="reply"]').disabled = !open;
+      if (selectMode || (!open && state.composerMode === "reply")) setComposerMode(open ? "reply" : "template");
+    }
+
     async function openChatThread(leadId) {
+      const switching = leadId !== state.activeLeadId;
       state.activeLeadId = leadId;
       const lead = state.leads.find(l => l.id === leadId);
       if (!lead) return;
@@ -927,6 +1015,8 @@
       av.textContent = avatarDigits(lead.phone);
       av.className = `w-9 h-9 rounded-full ${avatarColor(lead.id)} font-semibold text-xs flex items-center justify-center shrink-0`;
       document.getElementById("chat-active-name").textContent = lead.name;
+      if (switching) document.getElementById("btn-take-thread").classList.add("hidden");
+      refreshReplyWindow(lead, switching);
       document.getElementById("chat-active-meta").textContent = `+${lead.phone}${lead.business_name ? " • " + lead.business_name : ""}`;
 
       const pill = document.getElementById("chat-active-status-pill");
@@ -1221,15 +1311,17 @@
       document.getElementById("btn-bulk-sync-tpl").addEventListener("click", () => loadMetaTemplates(false));
       document.getElementById("template-select-dropdown").addEventListener("change", e => {
         const opt = e.target.selectedOptions[0];
-        if (!opt || !opt.value) return;
+        if (!opt || !opt.value) { renderTemplateValues(e.target); return; }
         document.getElementById("template-name-input").value = opt.value;
         document.getElementById("template-lang-input").value = opt.dataset.lang || "en";
+        renderTemplateValues(e.target);
       });
       document.getElementById("bulk-template-select").addEventListener("change", e => {
         const opt = e.target.selectedOptions[0];
-        if (!opt || !opt.value) return;
+        if (!opt || !opt.value) { renderTemplateValues(e.target); return; }
         document.getElementById("bulk-tpl-name").value = opt.value;
         document.getElementById("bulk-tpl-lang").value = opt.dataset.lang || "en";
+        renderTemplateValues(e.target);
       });
 
       document.getElementById("btn-sign-out").addEventListener("click", async () => { try { await apiFetch("/api/auth?action=logout", { method: "POST" }); } catch (e) {} signOutLocal(); });
@@ -1273,21 +1365,53 @@
 
       document.getElementById("composer-mode-toggle").addEventListener("click", e => {
         const btn = e.target.closest(".cmode-btn"); if (!btn) return;
-        state.composerMode = btn.dataset.cmode;
-        document.querySelectorAll(".cmode-btn").forEach(b => b.className = b.dataset.cmode === state.composerMode ? "cmode-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 font-medium shadow-sm" : "cmode-btn px-2.5 py-1 rounded-md text-slate-600 font-medium");
-        document.getElementById("template-picker-bar").classList.toggle("hidden", state.composerMode !== "template");
+        if (!btn.disabled) setComposerMode(btn.dataset.cmode);
       });
 
+      const takeThread = document.getElementById("btn-take-thread");
+      takeThread.addEventListener("click", async () => {
+        const leadId = state.activeLeadId;
+        if (!leadId) return;
+        takeThread.disabled = true;
+        try {
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, mode: "take_control" }) });
+          if (leadId === state.activeLeadId) takeThread.classList.add("hidden");
+          showToast("Meta confirmed chat control. Press Send to retry your message.");
+        } catch (error) {
+          showToast(error.message);
+        } finally {
+          takeThread.disabled = false;
+        }
+      });
       document.getElementById("chat-send-form").addEventListener("submit", async e => {
         e.preventDefault(); if (!state.activeLeadId) return;
+        const leadId = state.activeLeadId;
+        const submit = e.target.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
         const input = document.getElementById("chat-input"); const body = input.value.trim();
         const template_name = document.getElementById("template-name-input").value.trim();
         const template_lang = document.getElementById("template-lang-input").value.trim() || "en";
         if (state.composerMode === "reply" && !body) return;
+        submit.disabled = true;
         try {
-          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: state.activeLeadId, body, mode: state.composerMode, template_name, template_lang }) });
-          input.value = ""; await openChatThread(state.activeLeadId); showToast("Sent via Meta WhatsApp!");
-        } catch (err) { showToast(err.message); }
+          const template_params = state.composerMode === "template"
+            ? readTemplateValues("template-select-dropdown", template_name, template_lang) : [];
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, body, mode: state.composerMode, template_name, template_lang, template_params }) });
+          if (leadId === state.activeLeadId) {
+            input.value = "";
+            takeThread.classList.add("hidden");
+            await openChatThread(leadId);
+          }
+          showToast("Submitted to Meta WhatsApp.");
+        } catch (err) {
+          if (leadId === state.activeLeadId && err.code === 131070 && !state.user?.team_role) {
+            takeThread.classList.remove("hidden");
+          }
+          if (leadId === state.activeLeadId && err.code === "reply_window_closed") setComposerMode("template");
+          showToast(err.message);
+        } finally {
+          submit.disabled = false;
+        }
       });
 
       document.getElementById("btn-save-details").addEventListener("click", async () => {
@@ -1352,10 +1476,15 @@
               send_template: Boolean(fd.get("send_template")),
               template_name: fd.get("template_name") || "",
               template_lang: fd.get("template_lang") || "en",
-              template_var_mode: fd.get("template_var_mode") || "none"
+              template_params: fd.get("send_template")
+                ? readTemplateValues("bulk-template-select", fd.get("template_name"), fd.get("template_lang") || "en")
+                : undefined
             })
           });
-          e.target.reset(); closeModal("modal-bulk-import"); await refreshData();
+          e.target.reset();
+          renderTemplateValues(document.getElementById("bulk-template-select"));
+          document.getElementById("bulk-tpl-fields").classList.add("hidden");
+          closeModal("modal-bulk-import"); await refreshData();
           showToast(`Imported ${res.added} | Sent ${res.sent || 0}${res.failed ? ` | Failed ${res.failed}: ${res.lastError}` : ""}`);
         } catch (err) { showToast(err.message); }
       });
