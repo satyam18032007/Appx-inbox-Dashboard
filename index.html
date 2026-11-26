@@ -1,0 +1,1617 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AppX Inbox — WhatsApp AI CRM &amp; Webinar Studio</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    body { font-family: 'Inter', system-ui, -apple-system, sans-serif; }
+    .appx-topbar { background-color: #1e1736; }
+    .appx-chat-bg { background-color: #f7f6fb; }
+    .appx-bubble-out { background-color: #e6e1f9; color: #1e1b4b; }
+    .sheet-cell-input {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 6px;
+      padding: 4px 6px;
+      width: 100%;
+      transition: border-color 0.15s, background-color 0.15s;
+    }
+    .sheet-cell-input:hover { border-color: #cbd5e1; background: #ffffff; }
+    .sheet-cell-input:focus { outline: none; border-color: #6366f1; background: #ffffff; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15); }
+  </style>
+  <style>
+    #app-shell:is([data-role="operator"], [data-role="viewer"]) :is([data-tab="ai"], [data-tab="webinars"], #btn-tpl-studio, #btn-meta-setup, #setup-banner, #btn-bulk-open, #btn-sheet-bulk, #btn-dash-bulk, #btn-dash-export, #btn-sheet-export, [data-action="delete-lead"]),
+    #app-shell[data-role="viewer"] :is(#chat-composer, #btn-save-details, #btn-inbox-add, #btn-dash-add-lead) { display: none !important; }
+  </style>
+</head>
+<body class="bg-slate-50 text-slate-900 min-h-screen flex flex-col">
+
+  <!-- AUTH SCREEN -->
+  <div id="auth-screen" class="fixed inset-0 z-50 bg-slate-100 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl shadow-xl border border-slate-200 max-w-md w-full overflow-hidden">
+      <div class="appx-topbar px-6 py-5 flex items-center gap-3 text-white">
+        <div class="w-9 h-9 rounded-lg bg-violet-300 text-[#1e1736] font-bold flex items-center justify-center text-sm">Ax</div>
+        <div>
+          <div class="font-semibold text-base leading-tight">AppX Inbox</div>
+          <div class="text-xs text-violet-200">WhatsApp AI Sales Agent • CRM • Webinar Studio</div>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-4">
+        <div class="grid grid-cols-2 bg-slate-100 p-1 rounded-lg text-sm font-medium" id="auth-mode-tabs">
+          <button type="button" data-auth-mode="login" class="auth-mode-btn py-1.5 rounded-md bg-white text-slate-900 shadow-sm">Sign In</button>
+          <button type="button" data-auth-mode="register" class="auth-mode-btn py-1.5 rounded-md text-slate-600">Create Account</button>
+        </div>
+
+        <form id="auth-form" class="space-y-3 text-sm">
+          <div id="auth-name-wrap" class="hidden">
+            <label class="block text-xs font-medium text-slate-600 mb-1">Full Name</label>
+            <input name="name" placeholder="Your Name" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Email</label>
+            <input name="email" type="email" required placeholder="you@company.com" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs font-medium text-slate-600 mb-1">Password</label>
+            <input name="password" type="password" required minlength="6" placeholder="Min 6 characters" class="w-full px-3 py-2 rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div id="auth-error" class="hidden text-xs text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+          <button id="auth-submit-btn" type="submit" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium transition">Sign In</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN APP SHELL -->
+  <div id="app-shell" class="hidden flex-1 flex flex-col min-h-screen">
+    <header class="appx-topbar text-white sticky top-0 z-30 shadow-sm">
+      <div class="max-w-[1600px] mx-auto px-4 h-14 flex items-center justify-between gap-3">
+        <div class="flex items-center gap-3 min-w-0">
+          <div class="w-8 h-8 rounded-lg bg-violet-300 text-[#1e1736] flex items-center justify-center font-bold text-sm shrink-0">Ax</div>
+          <span class="font-semibold text-sm sm:text-base tracking-tight truncate">AppX Inbox</span>
+
+          <nav class="hidden md:flex items-center gap-1 ml-3 bg-white/10 p-1 rounded-lg" id="main-nav">
+            <button data-tab="chat" class="nav-tab px-3 py-1 rounded-md text-xs font-medium bg-white text-[#1e1736] transition flex items-center gap-1.5">
+              <span>Inbox</span>
+              <span id="nav-unread-badge" class="hidden bg-rose-500 text-white text-[10px] font-bold px-1.5 rounded-full">0</span>
+            </button>
+            <button data-tab="dashboard" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Dashboard</button>
+            <button data-tab="sheet" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Excel Sheet</button>
+            <button data-tab="ai" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition flex items-center gap-1">
+              <span>AI Agent</span>
+              <span id="nav-ai-dot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
+            </button>
+            <button data-tab="webinars" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Webinars</button>
+          </nav>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0">
+          <button id="btn-tpl-studio" class="hidden lg:inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs text-violet-100 transition">+ Templates</button>
+          <button id="btn-bulk-open" class="hidden lg:inline-flex items-center px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs text-violet-100 transition">↑ Bulk CSV</button>
+          <button id="btn-meta-setup" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/15 text-xs text-white transition">
+            <span id="meta-status-dot" class="w-2 h-2 rounded-full bg-amber-400"></span>
+            <span id="meta-status-label" class="hidden sm:inline">Connect WhatsApp API</span>
+          </button>
+          <button id="btn-team" class="px-3 py-1.5 rounded-md bg-white/10 text-xs text-white">Team</button>
+          <span id="user-pill" class="hidden xl:inline-flex items-center px-2.5 py-1 rounded-full bg-white/10 text-[11px] text-violet-200"></span>
+          <button id="btn-sign-out" class="px-3 py-1.5 rounded-md hover:bg-white/10 text-xs font-medium text-violet-100 hover:text-white transition">Sign out</button>
+        </div>
+      </div>
+
+      <div class="md:hidden flex items-center justify-around border-t border-white/10 px-2 py-1.5 text-xs" id="mobile-nav">
+        <button data-tab="chat" class="mob-tab px-2.5 py-1 rounded bg-white text-[#1e1736] font-medium">Inbox</button>
+        <button data-tab="dashboard" class="mob-tab px-2.5 py-1 rounded text-violet-200">Dashboard</button>
+        <button data-tab="sheet" class="mob-tab px-2.5 py-1 rounded text-violet-200">Sheet</button>
+        <button data-tab="ai" class="mob-tab px-2.5 py-1 rounded text-violet-200">AI Agent</button>
+        <button data-tab="webinars" class="mob-tab px-2.5 py-1 rounded text-violet-200">Webinars</button>
+      </div>
+    </header>
+
+    <div id="setup-banner" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
+      <div><strong>Setup Pending:</strong> Connect your Meta WhatsApp Cloud API so incoming replies appear automatically.</div>
+      <button id="btn-banner-setup" class="px-3 py-1 rounded-md bg-amber-600 hover:bg-amber-700 text-white font-medium">Open 3-Step Setup →</button>
+    </div>
+
+    <!-- VIEW 1: INBOX -->
+    <section id="view-chat" class="flex-1 flex flex-col lg:flex-row h-[calc(100vh-56px)] overflow-hidden bg-white">
+      <aside class="w-full lg:w-[360px] xl:w-[390px] border-r border-slate-200 flex flex-col h-full shrink-0 bg-white">
+        <div class="p-4 pb-3 space-y-3 border-b border-slate-200">
+          <div class="flex items-center justify-between">
+            <h1 class="text-xl font-bold text-slate-900">Inbox</h1>
+            <button id="btn-inbox-add" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">+ Add Lead</button>
+          </div>
+          <input id="chat-search" type="text" placeholder="Search name, number or message" class="w-full px-3.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
+
+          <div class="flex items-center justify-between text-xs pt-0.5">
+            <span class="font-semibold text-slate-800">Campaign replies</span>
+            <span id="sheet-synced-label" class="text-[11px] text-slate-400">Live synced</span>
+          </div>
+
+          <div class="flex flex-wrap gap-1.5" id="reply-type-filters">
+            <button data-rtype="All" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200">All chats <span id="cnt-all" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Interested" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Interested <span id="cnt-interested" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Free text" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Free text <span id="cnt-freetext" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Not interested" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Not interested <span id="cnt-notint" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="Opted out" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">Opted out <span id="cnt-optedout" class="ml-0.5 font-semibold">0</span></button>
+            <button data-rtype="No response" class="rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50">No response <span id="cnt-noresp" class="ml-0.5 font-semibold">0</span></button>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-1 pt-0.5 text-xs" id="ticket-state-filters">
+            <button data-tstate="All" class="tstate-tab px-2.5 py-1 rounded-md font-medium bg-indigo-50 text-indigo-700">All</button>
+            <button data-tstate="Unread" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Unread</button>
+            <button data-tstate="Pending" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Pending</button>
+            <button data-tstate="Resolved" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Resolved</button>
+            <button data-tstate="Failed" class="tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100">Failed</button>
+          </div>
+        </div>
+        <div id="chat-lead-list" class="flex-1 overflow-y-auto divide-y divide-slate-100"></div>
+      </aside>
+
+      <div class="flex-1 flex flex-col h-full min-w-0">
+        <div class="px-5 py-3 border-b border-slate-200 bg-white flex items-center justify-between gap-3">
+          <div class="flex items-center gap-3 min-w-0">
+            <div id="chat-active-avatar" class="w-9 h-9 rounded-full bg-slate-100 text-slate-600 font-semibold text-xs flex items-center justify-center shrink-0">--</div>
+            <div class="min-w-0">
+              <div id="chat-active-name" class="font-semibold text-sm text-slate-900 truncate">No conversation selected</div>
+              <div id="chat-active-meta" class="text-xs text-slate-500 truncate">Incoming WhatsApp messages will appear automatically</div>
+            </div>
+          </div>
+          <div class="flex items-center gap-2 shrink-0">
+            <span id="chat-active-status-pill" class="hidden text-xs px-2.5 py-1 rounded-full font-medium"></span>
+            <button id="btn-toggle-details" class="hidden px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-xs font-medium text-slate-700 transition">Details</button>
+          </div>
+        </div>
+
+        <div id="chat-messages" class="flex-1 overflow-y-auto p-5 space-y-3 appx-chat-bg">
+          <div class="text-center text-xs text-slate-500 bg-white rounded-xl py-6 px-5 max-w-md mx-auto mt-12 border border-slate-200">
+            Select a conversation on the left or upload a Bulk CSV to start messaging.
+          </div>
+        </div>
+
+        <div id="chat-composer" class="hidden border-t border-slate-200 bg-white px-5 py-3 space-y-2.5">
+          <div class="flex flex-wrap items-center justify-between gap-2 text-xs">
+            <div class="text-slate-500 flex items-center gap-1.5">
+              <span id="reply-window-dot" class="w-2 h-2 rounded-full bg-slate-400"></span>
+              <span id="reply-window-label">Select a conversation</span>
+              <button type="button" id="btn-take-thread" class="hidden px-2 py-1 rounded border border-indigo-300 text-indigo-700">Take chat control</button>
+            </div>
+            <div class="flex items-center gap-1 bg-slate-100 p-0.5 rounded-lg" id="composer-mode-toggle">
+              <button type="button" data-cmode="reply" class="cmode-btn px-2.5 py-1 rounded-md bg-white text-indigo-700 font-medium shadow-sm">Reply</button>
+              <button type="button" data-cmode="template" class="cmode-btn px-2.5 py-1 rounded-md text-slate-600 font-medium">Template</button>
+            </div>
+          </div>
+
+          <div id="template-picker-bar" class="hidden space-y-1.5 text-xs bg-indigo-50/70 border border-indigo-100 rounded-lg px-3 py-2">
+            <div class="flex flex-wrap items-center gap-2">
+              <span class="font-medium text-indigo-800">Meta Template:</span>
+              <select id="template-select-dropdown" class="flex-1 min-w-[160px] px-2.5 py-1 rounded border border-indigo-200 bg-white text-slate-800">
+                <option value="">Click Sync to load your Meta templates...</option>
+              </select>
+              <button type="button" id="btn-sync-templates" class="px-2.5 py-1 rounded bg-indigo-600 text-white font-medium hover:bg-indigo-700">↻ Sync</button>
+            </div>
+            <div id="inbox-template-values" class="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto"></div>
+            <div class="flex items-center gap-2">
+              <input id="template-name-input" placeholder="Template name" class="flex-1 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
+              <input id="template-lang-input" placeholder="Lang (en)" value="en" class="w-20 px-2 py-1 rounded border border-indigo-200 bg-white text-slate-700 text-[11px]" />
+            </div>
+          </div>
+
+          <form id="chat-send-form" class="flex items-center gap-2.5">
+            <input id="chat-input" type="text" placeholder="Write a reply..." class="flex-1 px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white" />
+            <button type="submit" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium transition shrink-0 flex items-center gap-1.5 shadow-sm">
+              <span>Send</span><span>↗</span>
+            </button>
+          </form>
+        </div>
+      </div>
+
+      <!-- Details Drawer -->
+      <aside id="details-drawer" class="hidden w-full lg:w-80 border-l border-slate-200 bg-white p-4 overflow-y-auto space-y-4 shrink-0">
+        <div class="flex items-center justify-between border-b border-slate-200 pb-3">
+          <h3 class="font-semibold text-sm text-slate-900">Lead &amp; AI Details</h3>
+          <button id="btn-close-details" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button>
+        </div>
+        <div class="space-y-3 text-xs">
+          <label class="flex items-center justify-between p-2.5 rounded-lg bg-slate-50 border border-slate-200 cursor-pointer">
+            <span class="font-medium text-slate-700">Pause AI Auto-Reply for this lead</span>
+            <input id="det-ai-paused" type="checkbox" class="rounded text-indigo-600" />
+          </label>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Sales Status</label>
+            <select id="det-status" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+              <option value="No Response">No Response</option>
+              <option value="Interested">Interested</option>
+              <option value="Demo Booked">Demo Booked</option>
+              <option value="Demo Done">Demo Done</option>
+              <option value="Follow-up Due">Follow-up Due</option>
+              <option value="Sold">Sold</option>
+              <option value="Not Interested">Not Interested</option>
+            </select>
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Inbox State</label>
+            <select id="det-ticket-state" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+              <option value="Pending">Pending</option>
+              <option value="Resolved">Resolved</option>
+              <option value="Failed">Failed</option>
+            </select>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-slate-500 font-medium mb-1">Demo Date</label>
+              <input id="det-demo-date" type="date" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" />
+            </div>
+            <div>
+              <label class="block text-slate-500 font-medium mb-1">Follow-up Date</label>
+              <input id="det-followup-date" type="date" class="w-full px-2 py-1.5 rounded-lg border border-slate-300" />
+            </div>
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Deal Value (₹)</label>
+            <input id="det-deal-value" type="number" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block text-slate-500 font-medium mb-1">Notes</label>
+            <textarea id="det-notes" rows="3" class="w-full px-2.5 py-1.5 rounded-lg border border-slate-300"></textarea>
+          </div>
+          <button id="btn-save-details" class="w-full py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition">Save Changes</button>
+        </div>
+      </aside>
+    </section>
+
+    <!-- VIEW 2: DASHBOARD -->
+    <section id="view-dashboard" class="hidden max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900">AppX Sales &amp; Demo Dashboard</h1>
+          <p class="text-sm text-slate-500">Live overview of bulk campaigns, AI-qualified demos, follow-ups, and closed sales.</p>
+        </div>
+        <div class="flex flex-wrap items-center gap-2">
+          <button id="btn-dash-bulk" class="px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-sm font-medium">↑ Import Bulk CSV</button>
+          <button id="btn-dash-add-lead" class="px-3.5 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white text-sm font-medium">+ Add Lead</button>
+          <button id="btn-dash-export" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">Download Excel (.xlsx)</button>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="text-xs font-medium text-slate-500 uppercase">Total Leads</div><div id="kpi-total" class="text-2xl font-bold text-slate-900 mt-1">0</div><div class="text-xs text-slate-500 mt-1"><span id="kpi-sent">—</span> campaign templates sent</div></div>
+        <div class="bg-white rounded-xl border border-purple-200 p-4 shadow-sm"><div class="text-xs font-medium text-purple-600 uppercase">Responded</div><div id="kpi-responded" class="text-2xl font-bold text-purple-700 mt-1">0</div><div id="kpi-response-rate" class="text-xs text-slate-500 mt-1">0% reply rate</div></div>
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="text-xs font-medium text-slate-500 uppercase">No Response</div><div id="kpi-no-response" class="text-2xl font-bold text-slate-700 mt-1">0</div><div class="text-xs text-slate-500 mt-1">Not replied yet</div></div>
+        <div class="bg-white rounded-xl border border-blue-200 p-4 shadow-sm"><div class="text-xs font-medium text-blue-600 uppercase">Demos</div><div class="flex items-baseline gap-2 mt-1"><span id="kpi-demo-booked" class="text-2xl font-bold text-blue-700">0</span><span class="text-xs text-slate-400">/</span><span id="kpi-demo-done" class="text-lg font-semibold text-indigo-700">0</span></div><div class="text-xs text-slate-500 mt-1">Booked / Done</div></div>
+        <div class="bg-white rounded-xl border border-amber-200 p-4 shadow-sm"><div class="text-xs font-medium text-amber-600 uppercase">Follow-up Due</div><div id="kpi-followup" class="text-2xl font-bold text-amber-700 mt-1">0</div><div class="text-xs text-slate-500 mt-1">Action needed today</div></div>
+        <div class="bg-emerald-50 rounded-xl border border-emerald-200 p-4 shadow-sm"><div class="text-xs font-medium text-emerald-700 uppercase">App Sold</div><div class="flex items-baseline gap-2 mt-1"><span id="kpi-sold" class="text-2xl font-bold text-emerald-800">0</span><span id="kpi-conv" class="text-xs font-semibold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full">0%</span></div><div id="kpi-revenue" class="text-xs font-medium text-emerald-700 mt-1">₹0 revenue</div></div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <div class="lg:col-span-5 bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+          <h2 class="text-base font-semibold text-slate-900 mb-3">Campaign Funnel</h2>
+          <div class="relative h-64"><canvas id="pipeline-chart"></canvas></div>
+        </div>
+        <div class="lg:col-span-7 bg-white rounded-xl border border-slate-200 p-5 shadow-sm flex flex-col">
+          <div class="flex items-center justify-between mb-3">
+            <div><h2 class="text-base font-semibold text-slate-900">Follow-up &amp; Demo Queue</h2><p class="text-xs text-slate-500">Leads waiting for demo, follow-up, or unread reply</p></div>
+            <button id="btn-go-sheet" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">Open Excel Sheet →</button>
+          </div>
+          <div id="followup-queue" class="divide-y divide-slate-100 overflow-y-auto max-h-64 pr-1"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 3: EXCEL SHEET -->
+    <section id="view-sheet" class="hidden max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 space-y-4">
+      <div class="flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div><h1 class="text-xl font-bold text-slate-900">Excel-Style Lead &amp; Response Sheet</h1><p class="text-sm text-slate-500">Edit any cell inline. Download a formatted `.xlsx` workbook anytime.</p></div>
+        <div class="flex flex-wrap items-center gap-2">
+          <input id="sheet-search" type="text" placeholder="Search name, phone..." class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm w-48" />
+          <label class="text-sm"><input type="checkbox" id="sheet-due" /> Follow-ups due</label>
+          <select id="sheet-sort" aria-label="Lead ordering" class="px-3 py-2 rounded-lg border text-sm">
+            <option value="">Default order</option><option value="value">Highest deal value</option><option value="name">Name A–Z</option>
+          </select>
+          <select id="sheet-filter-status" class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm">
+            <option value="All">All Statuses</option>
+            <option value="No Response">No Response</option>
+            <option value="Interested">Interested</option>
+            <option value="Demo Booked">Demo Booked</option>
+            <option value="Demo Done">Demo Done</option>
+            <option value="Follow-up Due">Follow-up Due</option>
+            <option value="Sold">Sold</option>
+            <option value="Not Interested">Not Interested</option>
+          </select>
+          <button id="btn-sheet-bulk" class="px-3.5 py-2 rounded-lg bg-white hover:bg-slate-100 text-slate-800 border border-slate-300 text-sm font-medium">↑ Bulk CSV</button>
+          <button id="btn-sheet-export" class="px-3.5 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-medium">Download Excel (.xlsx)</button>
+        </div>
+      </div>
+      <div class="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse text-sm">
+            <thead>
+              <tr class="bg-slate-100 border-b border-slate-200 text-xs font-semibold text-slate-600 uppercase">
+                <th class="py-3 px-3 min-w-[155px]">Lead &amp; Business</th>
+                <th class="py-3 px-3 min-w-[125px]">WhatsApp</th>
+                <th class="py-3 px-3 min-w-[105px]">Reply Tag</th>
+                <th class="py-3 px-3 min-w-[180px]">Last Message</th>
+                <th class="py-3 px-3 min-w-[140px]">Sales Status</th>
+                <th class="py-3 px-3 min-w-[130px]">Demo Date</th>
+                <th class="py-3 px-3 min-w-[130px]">Follow-up</th>
+                <th class="py-3 px-3 min-w-[90px]">Value (₹)</th>
+                <th class="py-3 px-3 min-w-[160px]">Notes</th>
+                <th class="py-3 px-3 text-right min-w-[95px]">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="sheet-tbody" class="divide-y divide-slate-200"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 4: AI SALES QUALIFIER AGENT & CATEGORY ASSET KITS -->
+    <section id="view-ai" class="hidden max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <div>
+        <h1 class="text-xl sm:text-2xl font-bold text-slate-900">AI Sales Qualifier &amp; Auto-Asset Agent</h1>
+        <p class="text-sm text-slate-500">Connect your Gemini API key so AI engages interested leads, asks 2–3 qualifying questions, sends category brochures/vouchers, and alerts your phone when they book a demo.</p>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <!-- AI Settings Form -->
+        <form id="form-ai-settings" class="lg:col-span-6 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4 text-sm">
+          <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+            <div>
+              <h2 class="font-semibold text-slate-900">1. Gemini AI &amp; Demo Alert Settings</h2>
+              <p class="text-xs text-slate-500">Gemini is managed by the project owner.</p>
+            </div>
+            <label class="inline-flex items-center gap-2 cursor-pointer">
+              <input id="ai-enabled-toggle" name="ai_enabled" type="checkbox" class="w-4 h-4 text-indigo-600 rounded" />
+              <span class="text-xs font-semibold text-indigo-700">AI Auto-Reply ON</span>
+            </label>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs font-medium text-slate-700 mb-1">Max Questions Before Sending Assets</label>
+              <input id="ai-max-q" name="ai_max_questions" type="number" min="1" max="6" value="3" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs" />
+            </div>
+            <div>
+              <label class="block text-xs font-medium text-slate-700 mb-1">Your Alert Phone (Demo SMS/WA)</label>
+              <input id="ai-alert-phone" name="owner_alert_phone" placeholder="e.g. 917600501642" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-medium text-slate-700 mb-1">Fast2SMS API Key (Optional — for Carrier SMS Alert)</label>
+            <input id="ai-fast2sms-key" name="fast2sms_api_key" type="password" placeholder="Optional Fast2SMS key for direct SMS to your mobile" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs" />
+          </div>
+
+          <div class="space-y-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <label class="block text-xs font-medium text-slate-700">AI Sales Script / Qualification Questions</label>
+              <button type="button" id="btn-ai-suggest" class="px-2.5 py-1 rounded-md bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 text-[11px] font-semibold">✨ AI Suggest Script</button>
+            </div>
+            <div class="flex flex-wrap gap-1.5" id="ai-preset-chips">
+              <button type="button" data-preset="educator" class="preset-chip px-2 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px]">Educator / Coaching</button>
+              <button type="button" data-preset="upsc" class="preset-chip px-2 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px]">UPSC / GPSC</button>
+              <button type="button" data-preset="creator" class="preset-chip px-2 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px]">Creator / Social Media</button>
+            </div>
+            <textarea id="ai-prompt" name="ai_system_prompt" rows="4" placeholder="Click a preset above or ✨ AI Suggest Script..." class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"></textarea>
+          </div>
+
+          <div class="flex gap-2">
+            <button type="submit" class="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition">Save AI Agent Settings</button>
+            <button type="button" id="btn-ai-test-run" class="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs transition">Test AI Reply</button>
+          </div>
+          <div id="ai-test-output" class="hidden p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs text-emerald-900 space-y-1"></div>
+        </form>
+
+        <!-- Category Asset Kits -->
+        <div class="lg:col-span-6 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-4">
+          <div class="border-b border-slate-100 pb-3">
+            <h2 class="font-semibold text-slate-900 text-sm">2. Category Brochures, Vouchers &amp; Asset Kits</h2>
+            <p class="text-xs text-slate-500">When AI learns a lead's subject (e.g. Physics, UPSC, GPSC), it auto-sends that category's brochure/voucher and asks for their demo time.</p>
+          </div>
+
+          <form id="form-add-kit" class="space-y-2.5 text-xs bg-slate-50 p-3.5 rounded-xl border border-slate-200">
+            <div class="grid grid-cols-2 gap-2">
+              <input name="category_name" required placeholder="Category (e.g. Physics, UPSC, GPSC)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+              <input name="keywords" placeholder="Keywords (e.g. physics, jee, neet)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+            </div>
+            <div class="grid grid-cols-3 gap-2">
+              <input name="asset_url" placeholder="Public PDF / Image / Brochure URL" class="col-span-2 px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+              <select name="asset_type" class="px-2 py-2 rounded-lg border border-slate-300 bg-white">
+                <option value="document">PDF / Doc</option>
+                <option value="image">Image / Poster</option>
+                <option value="video">Video</option>
+              </select>
+            </div>
+            <textarea name="message_text" rows="2" placeholder="Voucher / Offer message sent with this kit (e.g. Special ₹2000 AppX Launch Voucher included!)" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white"></textarea>
+            <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium">+ Add Category Asset Kit</button>
+          </form>
+
+          <div id="asset-kits-list" class="divide-y divide-slate-100 max-h-64 overflow-y-auto text-xs"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEW 5: WEBINAR STUDIO (webinar.gg-style) -->
+    <section id="view-webinars" class="hidden max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
+      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 class="text-xl sm:text-2xl font-bold text-slate-900">AppX Webinar Studio</h1>
+          <p class="text-sm text-slate-500">Host HD live webinars with screen sharing, chat, Q&amp;A, public registration pages, and automatic CRM lead capture — with zero Zoom/Meet license costs.</p>
+        </div>
+      </div>
+
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+        <form id="form-create-webinar" class="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3 text-xs h-fit">
+          <h2 class="font-semibold text-sm text-slate-900 border-b border-slate-100 pb-2">Create New Webinar</h2>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Webinar Title *</label>
+            <input name="title" required placeholder="e.g. Launch Your Branded Teaching App in 7 Days" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Host Name</label>
+            <input name="host_name" placeholder="e.g. Satyam Shukla" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Date &amp; Time *</label>
+            <input name="scheduled_at" required placeholder="e.g. Sunday, 7:00 PM IST" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+          </div>
+          <div>
+            <label class="block font-medium text-slate-700 mb-1">Description</label>
+            <textarea name="description" rows="2" placeholder="What attendees will learn..." class="w-full px-3 py-2 rounded-lg border border-slate-300"></textarea>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block font-medium text-slate-700 mb-1">Live Offer Button</label>
+              <input name="cta_text" value="Book Free AppX Demo" class="w-full px-2.5 py-2 rounded-lg border border-slate-300" />
+            </div>
+            <div>
+              <label class="block font-medium text-slate-700 mb-1">Offer Link URL</label>
+              <input name="cta_url" placeholder="https://wa.me/91..." class="w-full px-2.5 py-2 rounded-lg border border-slate-300" />
+            </div>
+          </div>
+          <button type="submit" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition">Create Webinar &amp; Get Link</button>
+        </form>
+
+        <div class="lg:col-span-8 space-y-4">
+          <div id="webinars-list" class="space-y-3"></div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- MODAL: Meta WhatsApp Cloud API Setup -->
+  <div id="modal-meta-setup" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-xl space-y-5 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between">
+        <div><h3 class="font-semibold text-base text-slate-900">Connect Your WhatsApp Business (3 Easy Steps)</h3><p class="text-xs text-slate-500">Every user connects their own Meta WhatsApp Cloud API in 2 minutes.</p></div>
+        <button data-close-modal="modal-meta-setup" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+      </div>
+
+      <div class="p-3.5 rounded-xl bg-indigo-50 border border-indigo-200 space-y-2 text-xs">
+        <div class="font-semibold text-indigo-950">Step 1: Copy Your Personal Webhook URL &amp; Verify Token</div>
+        <div class="flex items-center gap-2"><input id="setup-webhook-url" readonly class="flex-1 px-2.5 py-1.5 rounded bg-white border border-indigo-200 font-mono text-[11px]" /><button type="button" data-copy="setup-webhook-url" class="px-2.5 py-1.5 rounded bg-indigo-600 text-white font-medium">Copy URL</button></div>
+        <div class="flex items-center gap-2"><input id="setup-verify-token" readonly class="flex-1 px-2.5 py-1.5 rounded bg-white border border-indigo-200 font-mono text-[11px]" /><button type="button" data-copy="setup-verify-token" class="px-2.5 py-1.5 rounded bg-indigo-600 text-white font-medium">Copy Token</button></div>
+      </div>
+
+      <form id="form-meta-settings" class="space-y-3 text-xs">
+        <div class="font-semibold text-slate-900">Step 2 &amp; 3: Paste Your Meta API Keys &amp; Verify Live</div>
+        <div><label class="block font-medium text-slate-700 mb-1">Meta WhatsApp Access Token *</label><input id="meta-token-input" name="whatsapp_token" type="password" required placeholder="EAA..." class="w-full px-3 py-2 rounded-lg border border-slate-300" /></div>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><label class="block font-medium text-slate-700 mb-1">Meta App Secret</label><input name="meta_app_secret" type="password" autocomplete="off" placeholder="Leave blank to keep saved secret" class="w-full px-3 py-2 rounded-lg border border-slate-300" /></div>
+          <div><label class="block font-medium text-slate-700 mb-1">Phone Number ID *</label><input id="meta-pid-input" name="phone_number_id" required placeholder="e.g. 102938475610293" class="w-full px-3 py-2 rounded-lg border border-slate-300" /></div>
+          <div><label class="block font-medium text-slate-700 mb-1">WABA ID (for Auto Templates)</label><input id="meta-waba-input" name="waba_id" placeholder="e.g. 1527892642504824" class="w-full px-3 py-2 rounded-lg border border-slate-300" /></div>
+        </div>
+        <div id="meta-error" class="hidden text-rose-600 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2"></div>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" data-close-modal="modal-meta-setup" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Close</button>
+          <button id="btn-save-meta" type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium">Save &amp; Verify Connection</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Bulk CSV Import + Template Variables -->
+  <div id="modal-bulk-import" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between"><h3 class="font-semibold text-slate-900">Import Bulk Campaign CSV</h3><button data-close-modal="modal-bulk-import" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button></div>
+      <p class="text-xs text-slate-500">Upload CSV with columns <code>name, phone, business_name</code>.</p>
+      <form id="form-bulk-import" class="space-y-3 text-xs">
+        <div><label class="block font-medium text-slate-700 mb-1">Campaign Label</label><input name="campaign_name" value="appx (Marketing)" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" /></div>
+        <div><label class="block font-medium text-slate-700 mb-1">CSV File *</label><input type="file" name="file" accept=".csv" required class="w-full text-xs text-slate-600" /></div>
+        <label class="flex items-center gap-2 pt-1 cursor-pointer">
+          <input id="bulk-send-toggle" type="checkbox" name="send_template" class="rounded border-slate-300 text-indigo-600" />
+          <span class="text-slate-700 font-medium">Send approved Meta Template now</span>
+        </label>
+        <div id="bulk-tpl-fields" class="hidden space-y-2">
+          <div class="flex items-center gap-2">
+            <select id="bulk-template-select" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white">
+              <option value="">Select approved Meta template...</option>
+            </select>
+            <button type="button" id="btn-bulk-sync-tpl" class="px-2.5 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 font-medium border border-indigo-200">↻ Sync</button>
+          </div>
+          <div class="grid grid-cols-3 gap-2">
+            <input id="bulk-tpl-name" name="template_name" placeholder="Template name" class="col-span-2 px-2.5 py-1.5 rounded-lg border border-slate-300" />
+            <input id="bulk-tpl-lang" name="template_lang" value="en" placeholder="Lang (en)" class="px-2.5 py-1.5 rounded-lg border border-slate-300" />
+          </div>
+          <div id="bulk-template-values" class="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto"></div>
+        </div>
+        <div class="flex justify-end gap-2 pt-2">
+          <button type="button" data-close-modal="modal-bulk-import" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Import &amp; Run</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: Add Single Lead -->
+  <div id="modal-add-lead" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-xl max-w-md w-full p-5 shadow-xl space-y-4">
+      <div class="flex items-center justify-between"><h3 class="font-semibold text-slate-900">Add Lead</h3><button data-close-modal="modal-add-lead" class="text-slate-400 hover:text-slate-600 text-lg">&times;</button></div>
+      <form id="form-add-lead" class="space-y-3 text-sm">
+        <input name="name" required placeholder="Full Name *" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <input name="phone" required placeholder="WhatsApp Phone (e.g. 919811223344) *" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <input name="business_name" placeholder="Business / Academy" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
+        <div class="grid grid-cols-2 gap-2">
+          <select name="status" class="px-3 py-2 rounded-lg border border-slate-300 bg-white">
+            <option value="No Response">No Response</option><option value="Interested">Interested</option><option value="Demo Booked">Demo Booked</option><option value="Demo Done">Demo Done</option><option value="Follow-up Due">Follow-up Due</option><option value="Sold">Sold</option>
+          </select>
+          <input type="number" name="deal_value" value="0" placeholder="Deal ₹" class="px-3 py-2 rounded-lg border border-slate-300" />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button type="button" data-close-modal="modal-add-lead" class="px-4 py-2 rounded-lg border border-slate-300">Cancel</button>
+          <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Save Lead</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  
+  <!-- MODAL: In-App Meta Template Creator & Live Approval Tracker -->
+  <div id="modal-tpl-studio" class="hidden fixed inset-0 z-50 bg-slate-900/50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-2xl w-full p-6 shadow-xl space-y-4 max-h-[90vh] overflow-y-auto">
+      <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+        <div>
+          <h3 class="font-semibold text-base text-slate-900">Meta Templates — Create &amp; Check Approvals</h3>
+          <p class="text-xs text-slate-500">Submit new templates directly to Meta from here — no need to open Meta Business Manager.</p>
+        </div>
+        <button data-close-modal="modal-tpl-studio" class="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+      </div>
+
+      <form id="form-create-template" class="space-y-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
+        <div class="font-semibold text-slate-900">Apply for a New WhatsApp Template</div>
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <input name="name" required placeholder="Template name (e.g. appx_offer_1)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+          <select name="category" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white">
+            <option value="MARKETING">MARKETING</option>
+            <option value="UTILITY">UTILITY</option>
+          </select>
+          <select name="language" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white">
+            <option value="en">English (en)</option>
+            <option value="en_US">English US (en_US)</option>
+            <option value="hi">Hindi (hi)</option>
+          </select>
+        </div>
+        <textarea name="body_text" required rows="3" placeholder="Message body (e.g. Namaste {{1}}! AppX ke saath {{2}} ka khud ka branded Android + iOS app launch karein. Free demo ke liye reply karein.)" class="w-full px-3 py-2 rounded-lg border border-slate-300 bg-white"></textarea>
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <input name="sample_values" placeholder="Sample values for {{1}}, {{2}} (e.g. Rahul, Sharma Classes)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+          <input name="quick_replies" placeholder="Quick reply buttons (e.g. Interested, Book Demo)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
+        </div>
+        <div class="flex justify-end">
+          <button id="btn-submit-meta-tpl" type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">Submit to Meta for Approval</button>
+        </div>
+      </form>
+
+      <div class="space-y-2">
+        <div class="flex items-center justify-between">
+          <div class="text-xs font-semibold text-slate-900">Your Meta Templates (Live Status)</div>
+          <button type="button" id="btn-refresh-tpl-list" class="text-xs font-medium text-indigo-600 hover:text-indigo-700">↻ Refresh Approval Status</button>
+        </div>
+        <div id="tpl-studio-list" class="divide-y divide-slate-100 border border-slate-200 rounded-xl max-h-56 overflow-y-auto text-xs"></div>
+      </div>
+    </div>
+  </div>
+
+  <dialog id="team-dialog" class="w-full max-w-lg p-5 rounded-xl shadow-xl backdrop:bg-slate-900/50">
+    <div class="flex justify-between items-center mb-4">
+      <h2 class="font-semibold">Team access</h2>
+      <form method="dialog"><button class="px-2 py-1 text-sm">Close</button></form>
+    </div>
+    <label class="block text-sm mb-4">Workspace
+      <select id="team-workspace" class="block w-full border rounded p-2"></select>
+    </label>
+    <form id="team-invite" class="space-y-2">
+      <label class="block text-sm">Teammate email
+        <input name="email" type="email" required class="block w-full border rounded p-2" />
+      </label>
+      <label class="block text-sm">Role
+        <select name="role" class="block w-full border rounded p-2">
+          <option value="viewer">Viewer · Read inbox and CRM</option>
+          <option value="operator">Operator · Edit leads and reply</option>
+        </select>
+      </label>
+      <button class="bg-indigo-600 text-white px-3 py-2 rounded text-sm">Create invite</button>
+    </form>
+    <label id="team-link-wrap" class="hidden block my-3 text-sm">Share this link with your teammate
+      <input id="team-link" readonly class="block w-full border rounded p-2" />
+    </label>
+    <button id="team-copy" type="button" class="hidden text-indigo-700 text-sm">Copy invite link</button>
+    <div id="team-list" class="mt-4 divide-y text-sm"></div>
+    <p id="team-status" role="status" class="mt-3 text-sm text-slate-700"></p>
+  </dialog>
+
+  <div id="toast" class="hidden fixed bottom-5 right-5 z-50 bg-[#1e1736] text-white text-xs sm:text-sm px-4 py-2.5 rounded-lg shadow-lg"></div>
+
+  <script>
+    function followupDue(lead) {
+      const today = new Date().toLocaleDateString("sv-SE");
+      return lead.status === "Follow-up Due" || Boolean(lead.followup_date && lead.followup_date <= today && !["Sold", "Not Interested"].includes(lead.status));
+    }
+    const AVATAR_COLORS = ["bg-emerald-100 text-emerald-800", "bg-orange-100 text-orange-800", "bg-sky-100 text-sky-800", "bg-violet-100 text-violet-800", "bg-amber-100 text-amber-800", "bg-rose-100 text-rose-800"];
+    const STATUS_BADGES = { "No Response": "bg-slate-100 text-slate-700", "Interested": "bg-purple-100 text-purple-700", "Demo Booked": "bg-blue-100 text-blue-700", "Demo Done": "bg-indigo-100 text-indigo-700", "Follow-up Due": "bg-amber-100 text-amber-800", "Sold": "bg-emerald-100 text-emerald-800", "Not Interested": "bg-rose-100 text-rose-700" };
+
+    const state = {
+      token: null, user: null, authMode: "login", leads: [], kits: [], webinars: [],
+      messagesByLead: {}, activeTab: "chat", activeLeadId: null,
+      replyTypeFilter: "All", ticketStateFilter: "All", composerMode: "reply", chartInstance: null
+    };
+
+    function showToast(msg) {
+      const el = document.getElementById("toast");
+      el.textContent = msg;
+      el.classList.remove("hidden");
+      clearTimeout(el._t);
+      el._t = setTimeout(() => el.classList.add("hidden"), 3200);
+    }
+    function escapeHtml(s) { return String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+    function fmtTime(iso) { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? String(iso) : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }); }
+    function avatarDigits(phone) { const d = String(phone || "").replace(/\D/g, ""); return d.slice(-2) || "AX"; }
+    function avatarColor(id) { return AVATAR_COLORS[Number(id || 0) % AVATAR_COLORS.length]; }
+
+    const workspaceId = new URLSearchParams(location.search).get("workspace");
+    const inviteCode = new URLSearchParams(location.hash.slice(1)).get("invite");
+
+    function switchWorkspace(id) {
+      const url = new URL(location.href);
+      url.hash = "";
+      if (id) url.searchParams.set("workspace", id);
+      else url.searchParams.delete("workspace");
+      location.assign(url);
+    }
+
+    async function acceptTeamInvite() {
+      if (!inviteCode) return false;
+      try {
+        const result = await apiFetch("/api/team?action=accept", { method: "POST", body: JSON.stringify({ code: inviteCode }) });
+        switchWorkspace(result.workspace);
+        return true;
+      } catch (error) {
+        showToast(error.message);
+        return false;
+      }
+    }
+
+    async function loadTeam() {
+      const { members, workspaces } = await apiFetch("/api/team");
+      const picker = document.getElementById("team-workspace");
+      picker.replaceChildren(new Option("My workspace", ""), ...workspaces.map(w => new Option(w.owner.name + " · " + w.role, w.owner_id)));
+      picker.value = workspaceId || "";
+      document.getElementById("team-invite").hidden = Boolean(workspaceId);
+      document.getElementById("team-list").innerHTML = workspaceId ? "" : members.map(m => `
+        <div class="flex items-center flex-wrap gap-2 py-2">
+          <span class="grow">${escapeHtml(m.email)} · ${m.member_id ? "Active" : Date.parse(m.expires_at) <= Date.now() ? "Expired" : "Invited"}</span>
+          <select aria-label="Role for ${escapeHtml(m.email)}" data-team-role="${m.id}" data-current-role="${m.role}" class="border rounded p-1">
+            <option value="viewer" ${m.role === "viewer" ? "selected" : ""}>Viewer</option>
+            <option value="operator" ${m.role === "operator" ? "selected" : ""}>Operator</option>
+          </select>
+          <button data-team-remove="${m.id}" data-team-email="${escapeHtml(m.email)}" class="text-red-700">${m.member_id ? "Remove access" : "Cancel invite"}</button>
+        </div>`).join("");
+    }
+
+    async function apiFetch(url, options = {}) {
+      const headers = { ...(options.headers || {}) };
+      if (options.body && typeof options.body === "string") headers["Content-Type"] = "application/json";
+      const token = state.token;
+      if (workspaceId) headers["X-AppX-Workspace"] = workspaceId;
+      const res = await fetch(url, { ...options, headers });
+      if (workspaceId && res.status === 403 && url === "/api/auth" && token === state.token) {
+        document.getElementById("app-shell").classList.add("hidden");
+        const own = new URL(location.href);
+        own.searchParams.delete("workspace");
+        own.hash = "access-revoked";
+        location.replace(own);
+      }
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 401 && token && token === state.token) { signOutLocal(); throw new Error("Session expired."); }
+      if (!res.ok) {
+        const error = new Error(data.error || `Request failed (${res.status})`);
+        error.code = data.code;
+        throw error;
+      }
+      return data;
+    }
+
+    function signOutLocal() {
+      state.token = null; state.user = null; state.leads = []; state.activeLeadId = null;
+      state.messagesByLead = {};
+      document.getElementById("chat-messages").replaceChildren();
+      document.getElementById("chat-composer").classList.add("hidden");
+      try { localStorage.removeItem("appx_vercel_token"); localStorage.removeItem("appx_signed_in"); } catch (e) {}
+      document.getElementById("app-shell").classList.add("hidden");
+      document.getElementById("auth-screen").classList.remove("hidden");
+    }
+
+    function syncUserHeader() {
+      if (!state.user) return;
+      document.getElementById("auth-screen").classList.add("hidden");
+      document.getElementById("app-shell").classList.remove("hidden");
+      document.getElementById("user-pill").textContent = state.user.team_role
+        ? state.user.name + " · " + state.user.team_role : state.user.email;
+      document.getElementById("app-shell").dataset.role = state.user.team_role || "admin";
+      document.getElementById("setup-webhook-url").value = `${window.location.origin}${state.user.webhook_path}`;
+      document.getElementById("setup-verify-token").value = state.user.verify_token;
+      document.getElementById("meta-pid-input").value = state.user.phone_number_id || "";
+      const wabaInp = document.getElementById("meta-waba-input"); if (wabaInp) wabaInp.value = state.user.waba_id || "";
+
+      document.getElementById("ai-enabled-toggle").checked = Boolean(state.user.ai_enabled);
+      document.getElementById("ai-max-q").value = state.user.ai_max_questions || 3;
+      document.getElementById("ai-alert-phone").value = state.user.owner_alert_phone || "";
+      document.getElementById("ai-prompt").value = state.user.ai_system_prompt || "";
+      document.getElementById("nav-ai-dot").className = state.user.ai_enabled && state.user.ai_configured ? "w-1.5 h-1.5 rounded-full bg-emerald-400" : "w-1.5 h-1.5 rounded-full bg-slate-400";
+
+      const dot = document.getElementById("meta-status-dot");
+      const label = document.getElementById("meta-status-label");
+      const banner = document.getElementById("setup-banner");
+      if (state.user.meta_configured) {
+        dot.className = "w-2 h-2 rounded-full bg-emerald-400";
+        label.textContent = state.user.connected_phone ? `Connected (${state.user.connected_phone})` : "WhatsApp Connected";
+        banner.classList.add("hidden");
+      } else {
+        dot.className = "w-2 h-2 rounded-full bg-amber-400";
+        label.textContent = "Connect WhatsApp API";
+        banner.classList.remove("hidden");
+      }
+    }
+
+    
+    function templateValuesPanel(picker) {
+      return document.getElementById(picker.id === "bulk-template-select" ? "bulk-template-values" : "inbox-template-values");
+    }
+
+    function renderTemplateValues(picker) {
+      const panel = templateValuesPanel(picker);
+      const option = picker.selectedOptions[0];
+      const count = Number(option?.dataset.vars || 0);
+      const key = JSON.stringify([state.user?.id, option?.value, option?.dataset.lang]);
+      panel.replaceChildren();
+      delete panel.dataset.templateKey;
+      if (!count) return;
+
+      let saved = [];
+      try { saved = JSON.parse(localStorage.getItem("appx-template:" + key) || "[]"); } catch {}
+      const heading = document.createElement("p");
+      heading.className = "col-span-2 text-slate-600";
+      heading.textContent = "Template values · the same text is sent to every recipient";
+      panel.append(heading);
+
+      for (let index = 0; index < count; index++) {
+        const label = document.createElement("label");
+        label.textContent = "{{" + (index + 1) + "}} ";
+        const input = document.createElement("input");
+        input.type = "text";
+        input.className = "block w-full rounded border border-slate-300 px-2 py-1.5";
+        input.value = Array.isArray(saved) && typeof saved[index] === "string" ? saved[index] : "";
+        input.addEventListener("input", () => {
+          const values = [...panel.querySelectorAll("input")].map(field => field.value);
+          try { localStorage.setItem("appx-template:" + key, JSON.stringify(values)); } catch {}
+          for (const otherId of ["inbox-template-values", "bulk-template-values"]) {
+            const other = document.getElementById(otherId);
+            if (other !== panel && other.dataset.templateKey === key) {
+              [...other.querySelectorAll("input")].forEach((field, i) => { field.value = values[i] || ""; });
+            }
+          }
+        });
+        label.append(input);
+        panel.append(label);
+      }
+      panel.dataset.templateKey = key;
+    }
+
+    function readTemplateValues(pickerId, name, language) {
+      const picker = document.getElementById(pickerId);
+      const option = picker.selectedOptions[0];
+      if (!name || option?.value !== name || option?.dataset.lang !== language) {
+        throw new Error("Select the approved template and language from the dropdown.");
+      }
+      const fields = [...templateValuesPanel(picker).querySelectorAll("input")];
+      const empty = fields.findIndex(field => !field.value.trim());
+      if (empty >= 0) {
+        fields[empty].focus();
+        throw new Error("Fill template value {{" + (empty + 1) + "}} before sending.");
+      }
+      return fields.map(field => field.value.trim());
+    }
+
+    async function loadMetaTemplates(silent = false) {
+      if (!state.user || !state.user.meta_configured || state.user.team_role === "viewer") return;
+      try {
+        const data = await apiFetch("/api/templates");
+        const list = data.templates || [];
+        const approved = list.filter(t => String(t.status || "").toUpperCase() === "APPROVED");
+        const optionsHtml = approved.length
+          ? `<option value="">-- Select Meta Template (${approved.length} approved) --</option>` +
+            approved.map(t => `<option value="${escapeHtml(t.name)}" data-lang="${escapeHtml(t.language)}" data-vars="${t.var_count}">${escapeHtml(t.name)} [${escapeHtml(t.status)} • ${escapeHtml(t.language)}${t.var_count ? " • " + t.var_count + " vars" : ""}]</option>`).join("")
+          : `<option value="">No approved templates available</option>`;
+        const sel1 = document.getElementById("template-select-dropdown");
+        const sel2 = document.getElementById("bulk-template-select");
+        for (const picker of [sel1, sel2]) {
+          if (!picker) continue;
+          const name = picker.value;
+          const language = picker.selectedOptions[0]?.dataset.lang;
+          picker.innerHTML = optionsHtml;
+          const same = [...picker.options].find(option => option.value === name && option.dataset.lang === language);
+          if (same) same.selected = true;
+          renderTemplateValues(picker);
+        }
+        const studioList = document.getElementById("tpl-studio-list");
+        if (studioList) {
+          studioList.innerHTML = list.length
+            ? list.map(t => {
+                const st = String(t.status || "").toUpperCase();
+                const badge = st === "APPROVED" ? "bg-emerald-100 text-emerald-800" : st === "REJECTED" ? "bg-rose-100 text-rose-700" : "bg-amber-100 text-amber-800";
+                return `<div class="p-3 flex items-start justify-between gap-2"><div class="min-w-0"><div class="font-semibold text-slate-900">${escapeHtml(t.name)} <span class="text-[10px] font-normal text-slate-500">(${escapeHtml(t.category)} • ${escapeHtml(t.language)})</span></div><div class="text-slate-600 mt-0.5 line-clamp-2">${escapeHtml(t.body || "")}</div></div><span class="px-2 py-0.5 rounded-full text-[10px] font-semibold shrink-0 ${badge}">${escapeHtml(st)}</span></div>`;
+              }).join("")
+            : `<div class="p-4 text-center text-slate-400">No templates yet. Create your first one above!</div>`;
+        }
+        if (!silent) showToast(`Synced ${list.length} Meta templates (${approved.length} approved)`);
+      } catch (err) {
+        if (!silent) showToast(err.message);
+      }
+    }
+
+    async function refreshData() {
+      const token = state.token;
+      const [{ user }, { leads, campaignSent }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1")]);
+      if (token !== state.token) return;
+      document.getElementById("kpi-sent").textContent = campaignSent ?? "—";
+      const previousUser = state.user;
+      state.user = user; state.leads = leads || [];
+      const currentLead = state.leads.find(lead => lead.id === state.activeLeadId);
+      if (currentLead) refreshReplyWindow(currentLead);
+      if (JSON.stringify(previousUser) !== JSON.stringify(user) || document.getElementById("app-shell").classList.contains("hidden")) {
+        syncUserHeader();
+      }
+      document.getElementById("sheet-synced-label").textContent = `Synced ${new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+      renderChatList();
+      if (state.activeTab === "dashboard") renderDashboard();
+      if (state.activeTab === "sheet") renderSheet();
+    }
+
+    async function loadAiAndKits() {
+      const { user, kits } = await apiFetch("/api/ai");
+      state.user = user; state.kits = kits || [];
+      syncUserHeader();
+      const box = document.getElementById("asset-kits-list");
+      box.innerHTML = state.kits.length
+        ? state.kits.map(k => `
+          <div class="py-3 flex items-start justify-between gap-2">
+            <div class="min-w-0">
+              <div class="font-semibold text-slate-900">${escapeHtml(k.category_name)} <span class="text-[10px] font-normal text-slate-500">(${escapeHtml(k.keywords || k.category_name)})</span></div>
+              <div class="text-slate-600 mt-0.5">${escapeHtml(k.message_text || "—")}</div>
+              ${k.asset_url ? `<div class="text-indigo-600 truncate mt-0.5">${escapeHtml(k.asset_url)}</div>` : ""}
+            </div>
+            <button data-del-kit="${k.id}" class="px-2 py-1 rounded bg-rose-50 text-rose-700 font-medium shrink-0">Delete</button>
+          </div>
+        `).join("")
+        : `<div class="py-6 text-center text-slate-400">No category asset kits yet. Add Physics, UPSC, GPSC, or General above!</div>`;
+    }
+
+    async function loadWebinars() {
+      const { webinars } = await apiFetch("/api/webinars");
+      state.webinars = webinars || [];
+      const box = document.getElementById("webinars-list");
+      box.innerHTML = state.webinars.length
+        ? state.webinars.map(w => {
+          const regUrl = `${window.location.origin}/webinar.html?id=${w.id}`;
+          const hostUrl = `${window.location.origin}/webinar.html?id=${w.id}&host=1`;
+          return `
+            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
+              <div class="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <div class="font-semibold text-base text-slate-900">${escapeHtml(w.title)}</div>
+                  <div class="text-xs text-slate-500 mt-0.5">Host: ${escapeHtml(w.host_name)} • ${escapeHtml(w.scheduled_at)} • <strong>${w.registration_count || 0} registered</strong></div>
+                </div>
+                <div class="flex items-center gap-1.5">
+                  <button data-copy-text="${escapeHtml(regUrl)}" class="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium">Copy Reg Link</button>
+                  <a href="${hostUrl}" target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium">Start Live Room ↗</a>
+                  <button data-del-webinar="${w.id}" class="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium">Del</button>
+                </div>
+              </div>
+              <div class="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 font-mono truncate">Public Link: ${escapeHtml(regUrl)}</div>
+            </div>
+          `;
+        }).join("")
+        : `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">No webinars created yet. Create your first webinar on the left!</div>`;
+    }
+
+    function renderChatList() {
+      const leads = state.leads;
+      document.getElementById("cnt-all").textContent = leads.length;
+      document.getElementById("cnt-interested").textContent = leads.filter(l => l.reply_type === "Interested").length;
+      document.getElementById("cnt-freetext").textContent = leads.filter(l => l.reply_type === "Free text").length;
+      document.getElementById("cnt-notint").textContent = leads.filter(l => l.reply_type === "Not interested").length;
+      document.getElementById("cnt-optedout").textContent = leads.filter(l => l.reply_type === "Opted out").length;
+      document.getElementById("cnt-noresp").textContent = leads.filter(l => l.reply_type === "No response" || !l.has_responded).length;
+
+      const unreadTotal = leads.reduce((s, l) => s + Number(l.unread_count || 0), 0);
+      const badge = document.getElementById("nav-unread-badge");
+      badge.textContent = unreadTotal;
+      badge.classList.toggle("hidden", unreadTotal === 0);
+
+      const q = document.getElementById("chat-search").value.toLowerCase().trim();
+      const filtered = leads.filter(l => {
+        if (state.replyTypeFilter !== "All" && l.reply_type !== state.replyTypeFilter) return false;
+        if (state.ticketStateFilter === "Unread" && !(l.unread_count > 0)) return false;
+        if (["Pending", "Resolved", "Failed"].includes(state.ticketStateFilter) && l.ticket_state !== state.ticketStateFilter) return false;
+        if (!q) return true;
+        return l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.last_message || "").toLowerCase().includes(q);
+      });
+
+      const listEl = document.getElementById("chat-lead-list");
+      listEl.innerHTML = filtered.length
+        ? filtered.map(l => `
+          <button data-action="select-chat" data-id="${l.id}" class="w-full text-left px-4 py-3 hover:bg-slate-50 transition flex items-start gap-3 ${l.id === state.activeLeadId ? "bg-indigo-50/70" : ""}">
+            <div class="w-9 h-9 rounded-full ${avatarColor(l.id)} font-semibold text-xs flex items-center justify-center shrink-0 mt-0.5">${escapeHtml(avatarDigits(l.phone))}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center justify-between gap-2">
+                <span class="font-semibold text-sm text-slate-900 truncate">${escapeHtml(l.name)}</span>
+                <span class="text-[11px] text-slate-400 shrink-0">${escapeHtml(fmtTime(l.updated_at))}</span>
+              </div>
+              <div class="text-xs text-slate-500 truncate mt-0.5">${escapeHtml(l.last_message || "No reply yet")}</div>
+              <div class="flex items-center justify-between mt-1.5">
+                <div class="flex items-center gap-1">
+                  <span class="text-[10px] font-medium px-2 py-0.5 rounded bg-indigo-50 text-indigo-700">${escapeHtml(l.reply_type || "No response")}</span>
+                  ${l.detected_category ? `<span class="text-[10px] font-medium px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700">${escapeHtml(l.detected_category)}</span>` : ""}
+                </div>
+                ${l.unread_count > 0 ? `<span class="bg-indigo-600 text-white text-[10px] font-bold px-1.5 rounded-full">${l.unread_count}</span>` : ""}
+              </div>
+            </div>
+          </button>
+        `).join("")
+        : `<div class="p-8 text-center text-xs text-slate-400">No conversations yet.</div>`;
+    }
+
+    function setComposerMode(mode) {
+      state.composerMode = mode;
+      document.querySelectorAll(".cmode-btn").forEach(button => {
+        const active = button.dataset.cmode === mode;
+        button.className = "cmode-btn px-2.5 py-1 rounded-md font-medium disabled:opacity-50 " +
+          (active ? "bg-white text-indigo-700 shadow-sm" : "text-slate-600");
+      });
+      document.getElementById("template-picker-bar").classList.toggle("hidden", mode !== "template");
+    }
+
+    function refreshReplyWindow(lead, selectMode = false) {
+      const last = Date.parse(lead.last_incoming_at);
+      const now = Date.now();
+      const open = last <= now && now - last < 86400000;
+      document.getElementById("reply-window-label").textContent = open
+        ? "Reply window active" : "Start with an approved template";
+      document.getElementById("reply-window-dot").className = "w-2 h-2 rounded-full " + (open ? "bg-emerald-500" : "bg-slate-400");
+      document.querySelector('[data-cmode="reply"]').disabled = !open;
+      if (selectMode || (!open && state.composerMode === "reply")) setComposerMode(open ? "reply" : "template");
+    }
+
+    async function openChatThread(leadId) {
+      const switching = leadId !== state.activeLeadId;
+      state.activeLeadId = leadId;
+      const lead = state.leads.find(l => l.id === leadId);
+      if (!lead) return;
+
+      const av = document.getElementById("chat-active-avatar");
+      av.textContent = avatarDigits(lead.phone);
+      av.className = `w-9 h-9 rounded-full ${avatarColor(lead.id)} font-semibold text-xs flex items-center justify-center shrink-0`;
+      document.getElementById("chat-active-name").textContent = lead.name;
+      if (switching) document.getElementById("btn-take-thread").classList.add("hidden");
+      refreshReplyWindow(lead, switching);
+      document.getElementById("chat-active-meta").textContent = `+${lead.phone}${lead.business_name ? " • " + lead.business_name : ""}`;
+
+      const pill = document.getElementById("chat-active-status-pill");
+      pill.textContent = lead.status;
+      pill.className = `text-xs px-2.5 py-1 rounded-full font-medium ${STATUS_BADGES[lead.status] || "bg-slate-100"}`;
+      pill.classList.remove("hidden");
+      document.getElementById("btn-toggle-details").classList.remove("hidden");
+      document.getElementById("chat-composer").classList.remove("hidden");
+
+      document.getElementById("det-ai-paused").checked = Boolean(lead.ai_paused);
+      document.getElementById("det-status").value = lead.status;
+      document.getElementById("det-ticket-state").value = lead.ticket_state || "Pending";
+      document.getElementById("det-demo-date").value = lead.demo_date || "";
+      document.getElementById("det-followup-date").value = lead.followup_date || "";
+      document.getElementById("det-deal-value").value = Number(lead.deal_value || 0);
+      document.getElementById("det-notes").value = lead.notes || "";
+
+      await refreshChatMessages(leadId);
+    }
+
+    async function refreshChatMessages(leadId) {
+      const token = state.token;
+      const { messages = [] } = await apiFetch(`/api/messages?lead_id=${leadId}`);
+      if (token !== state.token || leadId !== state.activeLeadId) return;
+      state.messagesByLead[leadId] = messages;
+      const lead = state.leads.find(l => l.id === leadId);
+      if (lead) lead.unread_count = 0;
+
+      const box = document.getElementById("chat-messages");
+      box.innerHTML = messages.length
+        ? messages.map(m => {
+          const isOut = m.direction === "outgoing";
+          return `
+            <div class="flex ${isOut ? "justify-end" : "justify-start"}">
+              <div class="max-w-[75%] rounded-2xl px-4 py-2.5 text-sm shadow-sm ${isOut ? "appx-bubble-out rounded-br-sm" : "bg-white border border-slate-200 text-slate-900 rounded-bl-sm"}">
+                <div class="whitespace-pre-wrap">${escapeHtml(m.body)}</div>
+                <div class="text-[10px] ${isOut ? "text-indigo-900/60 text-right" : "text-slate-400"} mt-1">
+                  ${escapeHtml(fmtTime(m.created_at))} ${isOut ? `· ${escapeHtml(m.delivery_status || "Sent")}` : ""}
+                </div>
+              </div>
+            </div>
+          `;
+        }).join("")
+        : `<div class="text-center text-xs text-slate-400 mt-10">No messages yet. Switch to Template mode to start the conversation.</div>`;
+      box.scrollTop = box.scrollHeight;
+      renderChatList();
+    }
+
+    function renderDashboard() {
+      const leads = state.leads;
+      const total = leads.length;
+      const responded = leads.filter(l => l.has_responded).length;
+      const sold = leads.filter(l => l.status === "Sold").length;
+      const demoBooked = leads.filter(l => l.status === "Demo Booked").length;
+      const demoDone = leads.filter(l => l.status === "Demo Done").length;
+      const followup = leads.filter(followupDue).length;
+      const revenue = leads.filter(l => l.status === "Sold").reduce((s, l) => s + Number(l.deal_value || 0), 0);
+
+      document.getElementById("kpi-total").textContent = total;
+      document.getElementById("kpi-responded").textContent = responded;
+      document.getElementById("kpi-response-rate").textContent = `${total ? Math.round((responded / total) * 100) : 0}% reply rate`;
+      document.getElementById("kpi-no-response").textContent = total - responded;
+      document.getElementById("kpi-demo-booked").textContent = demoBooked;
+      document.getElementById("kpi-demo-done").textContent = demoDone;
+      document.getElementById("kpi-followup").textContent = followup;
+      document.getElementById("kpi-sold").textContent = sold;
+      document.getElementById("kpi-conv").textContent = `${total ? ((sold / total) * 100).toFixed(1) : "0.0"}%`;
+      document.getElementById("kpi-revenue").textContent = `₹${revenue.toLocaleString("en-IN")} revenue`;
+
+      const stages = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold"];
+      const ctx = document.getElementById("pipeline-chart").getContext("2d");
+      if (state.chartInstance) state.chartInstance.destroy();
+      state.chartInstance = new Chart(ctx, {
+        type: "bar",
+        data: { labels: stages, datasets: [{ data: stages.map(st => leads.filter(l => l.status === st).length), backgroundColor: ["#94a3b8", "#a855f7", "#3b82f6", "#6366f1", "#f59e0b", "#10b981"], borderRadius: 6 }] },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } } }
+      });
+
+      const queue = leads.filter(l => followupDue(l) || (l.has_responded && (l.status === "Demo Booked" || l.unread_count > 0)));
+      document.getElementById("followup-queue").innerHTML = queue.length
+        ? queue.map(l => `
+          <div class="py-3 flex items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2"><span class="font-medium text-sm text-slate-900 truncate">${escapeHtml(l.name)}</span><span class="text-[11px] px-2 py-0.5 rounded-full ${STATUS_BADGES[l.status] || ""}">${escapeHtml(l.status)}</span></div>
+              <div class="text-xs text-slate-500 truncate mt-0.5">${escapeHtml(l.last_message || l.notes || "")}</div>
+            </div>
+            <button data-action="open-chat" data-id="${l.id}" class="px-3 py-1 rounded-md bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium shrink-0">Reply</button>
+          </div>
+        `).join("")
+        : `<div class="py-8 text-center text-sm text-slate-400">No pending follow-ups right now.</div>`;
+    }
+
+    function renderSheet() {
+      const q = document.getElementById("sheet-search").value.toLowerCase().trim();
+      const stFilter = document.getElementById("sheet-filter-status").value;
+      const dueOnly = document.getElementById("sheet-due").checked;
+      const sort = document.getElementById("sheet-sort").value;
+      const filtered = state.leads.filter(l => (!dueOnly || followupDue(l)) && (stFilter === "All" || l.status === stFilter) && (!q || l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.business_name || "").toLowerCase().includes(q)));
+      if (sort === "value") filtered.sort((a, b) => Number(b.deal_value || 0) - Number(a.deal_value || 0));
+      if (sort === "name") filtered.sort((a, b) => a.name.localeCompare(b.name));
+      const opts = ["No Response", "Interested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold", "Not Interested"];
+      document.getElementById("sheet-tbody").innerHTML = filtered.length
+        ? filtered.map(l => `
+          <tr class="hover:bg-slate-50" data-lead-id="${l.id}">
+            <td class="py-2 px-3"><div class="font-medium text-slate-900">${escapeHtml(l.name)}</div><div class="text-xs text-slate-500">${escapeHtml(l.business_name)}</div></td>
+            <td class="py-2 px-3 font-mono text-xs">+${escapeHtml(l.phone)}</td>
+            <td class="py-2 px-3"><span class="text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">${escapeHtml(l.reply_type)}</span></td>
+            <td class="py-2 px-3 text-xs text-slate-600 truncate max-w-[180px]">${escapeHtml(l.last_message || "—")}</td>
+            <td class="py-2 px-3"><select data-field="status" class="sheet-cell-input text-xs font-medium ${STATUS_BADGES[l.status] || ""}">${opts.map(o => `<option value="${o}" ${l.status === o ? "selected" : ""}>${o}</option>`).join("")}</select></td>
+            <td class="py-2 px-3"><input type="date" data-field="demo_date" value="${escapeHtml(l.demo_date || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3"><input type="date" data-field="followup_date" value="${escapeHtml(l.followup_date || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3"><input type="number" data-field="deal_value" value="${Number(l.deal_value || 0)}" class="sheet-cell-input text-xs text-right" /></td>
+            <td class="py-2 px-3"><input type="text" data-field="notes" value="${escapeHtml(l.notes || "")}" class="sheet-cell-input text-xs" /></td>
+            <td class="py-2 px-3 text-right whitespace-nowrap space-x-1">
+              <button data-action="open-chat" data-id="${l.id}" class="px-2 py-1 rounded bg-indigo-50 text-indigo-700 text-xs font-medium">Chat</button>
+              <button data-action="delete-lead" data-id="${l.id}" class="px-2 py-1 rounded bg-rose-50 text-rose-700 text-xs font-medium">Del</button>
+            </td>
+          </tr>
+        `).join("")
+        : `<tr><td colspan="10" class="py-8 text-center text-slate-400">No leads yet.</td></tr>`;
+    }
+
+    function switchTab(tab) {
+      state.activeTab = tab;
+      ["chat", "dashboard", "sheet", "ai", "webinars"].forEach(t => document.getElementById(`view-${t}`).classList.toggle("hidden", t !== tab));
+      document.querySelectorAll(".nav-tab").forEach(btn => {
+        btn.className = btn.dataset.tab === tab
+          ? "nav-tab px-3 py-1 rounded-md text-xs font-medium bg-white text-[#1e1736] transition flex items-center gap-1.5"
+          : "nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition flex items-center gap-1.5";
+      });
+      document.querySelectorAll(".mob-tab").forEach(btn => {
+        btn.className = btn.dataset.tab === tab ? "mob-tab px-2.5 py-1 rounded bg-white text-[#1e1736] font-medium" : "mob-tab px-2.5 py-1 rounded text-violet-200";
+      });
+      if (tab === "dashboard") renderDashboard();
+      if (tab === "sheet") renderSheet();
+      if (tab === "chat") renderChatList();
+      if (tab === "ai") loadAiAndKits();
+      if (tab === "webinars") loadWebinars();
+    }
+
+    function parseCsvText(text) {
+      const rows = [];
+      let row = [];
+      let value = "";
+      let quoted = false;
+
+      for (let i = 0; i < text.length; i++) {
+        const char = text[i];
+        if (quoted) {
+          if (char === '"' && text[i + 1] === '"') {
+            value += '"';
+            i++;
+          } else if (char === '"') {
+            quoted = false;
+          } else {
+            value += char;
+          }
+        } else if (char === '"' && !value.trim()) {
+          value = "";
+          quoted = true;
+        } else if (char === "," || char === "\n" || char === "\r") {
+          row.push(value.trim());
+          value = "";
+          if (char !== ",") {
+            if (row.some(Boolean)) rows.push(row);
+            row = [];
+            if (char === "\r" && text[i + 1] === "\n") i++;
+          }
+        } else {
+          value += char;
+        }
+      }
+
+      if (quoted) throw new Error("CSV has an unclosed quoted field.");
+      row.push(value.trim());
+      if (row.some(Boolean)) rows.push(row);
+      const headers = (rows.shift() || []).map(header => header.toLowerCase());
+      return rows.map(cols => Object.fromEntries(headers.map((header, i) => [header, cols[i] || ""])));
+    }
+
+    function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+    function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+    function bindEvents() {
+      const teamStatus = document.getElementById("team-status");
+      document.getElementById("btn-team").addEventListener("click", async () => {
+        document.getElementById("team-dialog").showModal();
+        teamStatus.textContent = "";
+        try { await loadTeam(); } catch (error) { teamStatus.textContent = error.message; }
+      });
+      document.getElementById("team-copy").addEventListener("click", async () => {
+        const link = document.getElementById("team-link");
+        try {
+          await navigator.clipboard.writeText(link.value);
+          teamStatus.textContent = "Invite link copied.";
+        } catch {
+          link.select();
+          teamStatus.textContent = "Copy the selected invite link.";
+        }
+      });
+      document.getElementById("team-workspace").addEventListener("change", e => switchWorkspace(e.target.value));
+      document.getElementById("team-invite").addEventListener("submit", async e => {
+        e.preventDefault();
+        teamStatus.textContent = "";
+        try {
+          const body = Object.fromEntries(new FormData(e.target));
+          const { code } = await apiFetch("/api/team", { method: "POST", body: JSON.stringify(body) });
+          const url = new URL(location.pathname, location.origin);
+          url.hash = "invite=" + code;
+          document.getElementById("team-link").value = url.href;
+          document.getElementById("team-link-wrap").classList.remove("hidden");
+          document.getElementById("team-copy").classList.remove("hidden");
+          e.target.reset();
+          await loadTeam();
+        } catch (error) { teamStatus.textContent = error.message; }
+      });
+      document.getElementById("team-list").addEventListener("change", async e => {
+        const id = e.target.dataset.teamRole;
+        if (!id) return;
+        const input = e.target;
+        input.disabled = true;
+        try {
+          await apiFetch("/api/team?id=" + id, { method: "PATCH", body: JSON.stringify({ role: input.value }) });
+          input.dataset.currentRole = input.value;
+          teamStatus.textContent = "Role updated.";
+        } catch (error) {
+          input.value = input.dataset.currentRole;
+          teamStatus.textContent = error.message;
+        } finally {
+          input.disabled = false;
+        }
+      });
+      document.getElementById("team-list").addEventListener("click", async e => {
+        const id = e.target.dataset.teamRemove;
+        if (!id || !confirm("Revoke business workspace access for " + e.target.dataset.teamEmail + "?")) return;
+        e.target.disabled = true;
+        try {
+          await apiFetch("/api/team?id=" + id, { method: "DELETE" });
+          await loadTeam();
+          document.getElementById("team-link").value = "";
+          document.getElementById("team-link-wrap").classList.add("hidden");
+          document.getElementById("team-copy").classList.add("hidden");
+          teamStatus.textContent = "Access revoked.";
+        } catch (error) {
+          e.target.disabled = false;
+          teamStatus.textContent = error.message;
+        }
+      });
+      document.getElementById("auth-mode-tabs").addEventListener("click", e => {
+        const btn = e.target.closest(".auth-mode-btn");
+        if (!btn) return;
+        state.authMode = btn.dataset.authMode;
+        document.querySelectorAll(".auth-mode-btn").forEach(b => b.className = b.dataset.authMode === state.authMode ? "auth-mode-btn py-1.5 rounded-md bg-white text-slate-900 shadow-sm" : "auth-mode-btn py-1.5 rounded-md text-slate-600");
+        document.getElementById("auth-name-wrap").classList.toggle("hidden", state.authMode !== "register");
+        document.getElementById("auth-submit-btn").textContent = state.authMode === "register" ? "Create Private Account" : "Sign In";
+      });
+
+      document.getElementById("auth-form").addEventListener("submit", async e => {
+        e.preventDefault();
+        const errEl = document.getElementById("auth-error"); errEl.classList.add("hidden");
+        const fd = Object.fromEntries(new FormData(e.target).entries());
+        try {
+          const data = await apiFetch(`/api/auth?action=${state.authMode}`, { method: "POST", body: JSON.stringify(fd) });
+          state.token = crypto.randomUUID(); state.user = data.user;
+          try { localStorage.setItem("appx_signed_in", state.token); } catch (ex) {}
+          if (await acceptTeamInvite()) return;
+          await refreshData();
+          if (state.leads.length) await openChatThread(state.leads[0].id);
+          loadMetaTemplates(true);
+          if (!state.user.team_role && !state.user.meta_configured) openModal("modal-meta-setup");
+        } catch (err) { errEl.textContent = err.message; errEl.classList.remove("hidden"); }
+      });
+
+      
+      
+      document.getElementById("btn-tpl-studio").addEventListener("click", () => { openModal("modal-tpl-studio"); loadMetaTemplates(false); });
+      document.getElementById("btn-refresh-tpl-list").addEventListener("click", () => loadMetaTemplates(false));
+      document.getElementById("form-create-template").addEventListener("submit", async e => {
+        e.preventDefault();
+        const btn = document.getElementById("btn-submit-meta-tpl");
+        btn.disabled = true; btn.textContent = "Submitting to Meta...";
+        try {
+          const res = await apiFetch("/api/templates", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+          e.target.reset();
+          showToast(`Submitted "${res.name}" (${res.status}) to Meta!`);
+          await loadMetaTemplates(true);
+        } catch (err) { showToast(err.message); }
+        finally { btn.disabled = false; btn.textContent = "Submit to Meta for Approval"; }
+      });
+
+      document.getElementById("btn-sync-templates").addEventListener("click", () => loadMetaTemplates(false));
+      document.getElementById("btn-bulk-sync-tpl").addEventListener("click", () => loadMetaTemplates(false));
+      document.getElementById("template-select-dropdown").addEventListener("change", e => {
+        const opt = e.target.selectedOptions[0];
+        if (!opt || !opt.value) { renderTemplateValues(e.target); return; }
+        document.getElementById("template-name-input").value = opt.value;
+        document.getElementById("template-lang-input").value = opt.dataset.lang || "en";
+        renderTemplateValues(e.target);
+      });
+      document.getElementById("bulk-template-select").addEventListener("change", e => {
+        const opt = e.target.selectedOptions[0];
+        if (!opt || !opt.value) { renderTemplateValues(e.target); return; }
+        document.getElementById("bulk-tpl-name").value = opt.value;
+        document.getElementById("bulk-tpl-lang").value = opt.dataset.lang || "en";
+        renderTemplateValues(e.target);
+      });
+
+      document.getElementById("btn-sign-out").addEventListener("click", async () => { try { await apiFetch("/api/auth?action=logout", { method: "POST" }); } catch (e) {} signOutLocal(); });
+      document.querySelectorAll("[data-copy]").forEach(btn => btn.addEventListener("click", () => { const inp = document.getElementById(btn.dataset.copy); inp.select(); try { navigator.clipboard.writeText(inp.value); } catch (e) { document.execCommand("copy"); } showToast("Copied!"); }));
+
+      document.getElementById("main-nav").addEventListener("click", e => { const b = e.target.closest(".nav-tab"); if (b) switchTab(b.dataset.tab); });
+      document.getElementById("mobile-nav").addEventListener("click", e => { const b = e.target.closest(".mob-tab"); if (b) switchTab(b.dataset.tab); });
+      document.getElementById("btn-go-sheet").addEventListener("click", () => switchTab("sheet"));
+      document.getElementById("btn-meta-setup").addEventListener("click", () => openModal("modal-meta-setup"));
+      document.getElementById("btn-banner-setup").addEventListener("click", () => openModal("modal-meta-setup"));
+      document.getElementById("btn-bulk-open").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-dash-bulk").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-sheet-bulk").addEventListener("click", () => openModal("modal-bulk-import"));
+      document.getElementById("btn-dash-add-lead").addEventListener("click", () => openModal("modal-add-lead"));
+      document.getElementById("btn-inbox-add").addEventListener("click", () => openModal("modal-add-lead"));
+      document.getElementById("btn-toggle-details").addEventListener("click", () => document.getElementById("details-drawer").classList.toggle("hidden"));
+      document.getElementById("btn-close-details").addEventListener("click", () => document.getElementById("details-drawer").classList.add("hidden"));
+      document.querySelectorAll("[data-close-modal]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.closeModal)));
+
+      const downloadExcel = () => { window.location.href = "/api/export"; };
+      document.getElementById("btn-dash-export").addEventListener("click", downloadExcel);
+      document.getElementById("btn-sheet-export").addEventListener("click", downloadExcel);
+      document.getElementById("bulk-send-toggle").addEventListener("change", e => document.getElementById("bulk-tpl-fields").classList.toggle("hidden", !e.target.checked));
+
+      document.getElementById("reply-type-filters").addEventListener("click", e => {
+        const btn = e.target.closest(".rtype-chip"); if (!btn) return;
+        state.replyTypeFilter = btn.dataset.rtype;
+        document.querySelectorAll(".rtype-chip").forEach(c => c.className = c.dataset.rtype === state.replyTypeFilter ? "rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-indigo-50 text-indigo-700 border border-indigo-200" : "rtype-chip px-2.5 py-1 rounded-lg text-xs font-medium bg-white text-slate-700 border border-slate-200 hover:bg-slate-50");
+        renderChatList();
+      });
+
+      document.getElementById("ticket-state-filters").addEventListener("click", e => {
+        const btn = e.target.closest(".tstate-tab"); if (!btn) return;
+        state.ticketStateFilter = btn.dataset.tstate;
+        document.querySelectorAll(".tstate-tab").forEach(t => t.className = t.dataset.tstate === state.ticketStateFilter ? "tstate-tab px-2.5 py-1 rounded-md font-medium bg-indigo-50 text-indigo-700" : "tstate-tab px-2.5 py-1 rounded-md font-medium text-slate-600 hover:bg-slate-100");
+        renderChatList();
+      });
+
+      document.getElementById("chat-search").addEventListener("input", renderChatList);
+      document.getElementById("chat-lead-list").addEventListener("click", async e => { const b = e.target.closest("[data-action='select-chat']"); if (b) await openChatThread(Number(b.dataset.id)); });
+
+      document.getElementById("composer-mode-toggle").addEventListener("click", e => {
+        const btn = e.target.closest(".cmode-btn"); if (!btn) return;
+        if (!btn.disabled) setComposerMode(btn.dataset.cmode);
+      });
+
+      const takeThread = document.getElementById("btn-take-thread");
+      takeThread.addEventListener("click", async () => {
+        const leadId = state.activeLeadId;
+        if (!leadId) return;
+        takeThread.disabled = true;
+        try {
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, mode: "take_control" }) });
+          if (leadId === state.activeLeadId) takeThread.classList.add("hidden");
+          showToast("Meta confirmed chat control. Press Send to retry your message.");
+        } catch (error) {
+          showToast(error.message);
+        } finally {
+          takeThread.disabled = false;
+        }
+      });
+      document.getElementById("chat-send-form").addEventListener("submit", async e => {
+        e.preventDefault(); if (!state.activeLeadId) return;
+        const leadId = state.activeLeadId;
+        const submit = e.target.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
+        const input = document.getElementById("chat-input"); const body = input.value.trim();
+        const template_name = document.getElementById("template-name-input").value.trim();
+        const template_lang = document.getElementById("template-lang-input").value.trim() || "en";
+        if (state.composerMode === "reply" && !body) return;
+        submit.disabled = true;
+        try {
+          const template_params = state.composerMode === "template"
+            ? readTemplateValues("template-select-dropdown", template_name, template_lang) : [];
+          await apiFetch("/api/messages", { method: "POST", body: JSON.stringify({ lead_id: leadId, body, mode: state.composerMode, template_name, template_lang, template_params }) });
+          if (leadId === state.activeLeadId) {
+            input.value = "";
+            takeThread.classList.add("hidden");
+            await openChatThread(leadId);
+          }
+          showToast("Submitted to Meta WhatsApp.");
+        } catch (err) {
+          if (leadId === state.activeLeadId && err.code === 131070 && !state.user?.team_role) {
+            takeThread.classList.remove("hidden");
+          }
+          if (leadId === state.activeLeadId && err.code === "reply_window_closed") setComposerMode("template");
+          showToast(err.message);
+        } finally {
+          submit.disabled = false;
+        }
+      });
+
+      document.getElementById("btn-save-details").addEventListener("click", async () => {
+        if (!state.activeLeadId) return;
+        await apiFetch(`/api/leads?id=${state.activeLeadId}`, {
+          method: "PATCH",
+          body: JSON.stringify({
+            ai_paused: document.getElementById("det-ai-paused").checked,
+            status: document.getElementById("det-status").value,
+            ticket_state: document.getElementById("det-ticket-state").value,
+            demo_date: document.getElementById("det-demo-date").value,
+            followup_date: document.getElementById("det-followup-date").value,
+            deal_value: Number(document.getElementById("det-deal-value").value || 0),
+            notes: document.getElementById("det-notes").value
+          })
+        });
+        await refreshData(); await openChatThread(state.activeLeadId); showToast("Saved!");
+      });
+
+      document.getElementById("followup-queue").addEventListener("click", async e => { const b = e.target.closest("[data-action='open-chat']"); if (b) { switchTab("chat"); await openChatThread(Number(b.dataset.id)); } });
+      document.getElementById("sheet-search").addEventListener("input", renderSheet);
+      document.getElementById("sheet-due").addEventListener("change", renderSheet);
+      document.getElementById("sheet-sort").addEventListener("change", renderSheet);
+      document.getElementById("sheet-filter-status").addEventListener("change", renderSheet);
+      document.getElementById("sheet-tbody").addEventListener("change", async e => {
+        const inp = e.target.closest("[data-field]"); if (!inp) return;
+        if (state.user.team_role === "viewer") { renderSheet(); return; }
+        const id = Number(inp.closest("tr").dataset.leadId);
+        const val = inp.dataset.field === "deal_value" ? Number(inp.value || 0) : inp.value;
+        await apiFetch(`/api/leads?id=${id}`, { method: "PATCH", body: JSON.stringify({ [inp.dataset.field]: val }) });
+        await refreshData(); showToast("Saved!");
+      });
+      document.getElementById("sheet-tbody").addEventListener("click", async e => {
+        const b = e.target.closest("[data-action]"); if (!b) return;
+        const id = Number(b.dataset.id);
+        if (b.dataset.action === "open-chat") { switchTab("chat"); await openChatThread(id); }
+        else if (b.dataset.action === "delete-lead") { await apiFetch(`/api/leads?id=${id}`, { method: "DELETE" }); await refreshData(); showToast("Deleted"); }
+      });
+
+      document.getElementById("form-meta-settings").addEventListener("submit", async e => {
+        e.preventDefault(); const errEl = document.getElementById("meta-error"); errEl.classList.add("hidden");
+        const btn = document.getElementById("btn-save-meta"); btn.disabled = true; btn.textContent = "Verifying...";
+        try {
+          const res = await apiFetch("/api/meta", { method: "PUT", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+          state.user = res.user; syncUserHeader(); closeModal("modal-meta-setup");
+          showToast(`Connected: ${res.meta_info.display_phone_number || "WhatsApp"}`);
+        } catch (err) { errEl.textContent = err.message; errEl.classList.remove("hidden"); }
+        finally { btn.disabled = false; btn.textContent = "Save & Verify Connection"; }
+      });
+
+      document.getElementById("form-bulk-import").addEventListener("submit", async e => {
+        e.preventDefault();
+        const fd = new FormData(e.target);
+        try {
+          const rows = parseCsvText(await fd.get("file").text());
+          if (!rows.length) { showToast("CSV has no rows"); return; }
+          const res = await apiFetch("/api/leads?action=bulk", {
+            method: "POST",
+            body: JSON.stringify({
+              rows,
+              campaign_name: fd.get("campaign_name") || "appx (Marketing)",
+              send_template: Boolean(fd.get("send_template")),
+              template_name: fd.get("template_name") || "",
+              template_lang: fd.get("template_lang") || "en",
+              template_params: fd.get("send_template")
+                ? readTemplateValues("bulk-template-select", fd.get("template_name"), fd.get("template_lang") || "en")
+                : undefined
+            })
+          });
+          e.target.reset();
+          renderTemplateValues(document.getElementById("bulk-template-select"));
+          document.getElementById("bulk-tpl-fields").classList.add("hidden");
+          closeModal("modal-bulk-import"); await refreshData();
+          showToast(`Imported ${res.added} | Sent ${res.sent || 0}${res.failed ? ` | Failed ${res.failed}: ${res.lastError}` : ""}`);
+        } catch (err) { showToast(err.message); }
+      });
+
+      document.getElementById("form-add-lead").addEventListener("submit", async e => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(e.target).entries()); fd.deal_value = Number(fd.deal_value || 0);
+        try { await apiFetch("/api/leads", { method: "POST", body: JSON.stringify(fd) }); e.target.reset(); closeModal("modal-add-lead"); await refreshData(); showToast("Lead added"); }
+        catch (err) { showToast(err.message); }
+      });
+
+      // AI Settings & Category Asset Kits
+      
+      const AI_PRESETS = {
+        educator: "Ask politely in Hinglish: 1) Which subject/exam do you teach (Physics, Chemistry, Maths, NEET/JEE)? 2) Do you have a YouTube/WhatsApp/Facebook channel and how many students? 3) Do you also want our team to handle your social media along with your branded AppX app? After 2-3 answers, send their subject kit & voucher and ask for a convenient 15-min demo time.",
+        upsc: "Ask politely in Hinglish: 1) Are you teaching UPSC, GPSC, or State PCS? 2) Do you need test-series, live classes, and PDF notes in your branded app? 3) Would you like social media growth handling too? Then share the UPSC/GPSC brochure & voucher and ask for a demo slot.",
+        creator: "Ask politely in Hinglish: 1) What niche/skill do you teach? 2) How many followers do you have on Instagram/YouTube? 3) Do you want a complete branded app + social media marketing package? Then send the creator kit and ask for a demo time."
+      };
+      document.getElementById("ai-preset-chips").addEventListener("click", e => {
+        const b = e.target.closest(".preset-chip"); if (!b) return;
+        document.getElementById("ai-prompt").value = AI_PRESETS[b.dataset.preset] || "";
+        showToast("Preset script loaded — click Save!");
+      });
+      document.getElementById("btn-ai-suggest").addEventListener("click", async () => {
+        const btn = document.getElementById("btn-ai-suggest");
+        btn.disabled = true; btn.textContent = "Generating...";
+        try {
+          const res = await apiFetch("/api/ai?action=suggest", { method: "POST", body: JSON.stringify({ goal: document.getElementById("ai-prompt").value || "AppX branded app and social media marketing for Indian educators" }) });
+          document.getElementById("ai-prompt").value = res.suggested_prompt;
+          showToast("AI suggested a tailored script!");
+        } catch (err) { showToast(err.message); }
+        finally { btn.disabled = false; btn.textContent = "✨ AI Suggest Script"; }
+      });
+      document.getElementById("btn-ai-test-run").addEventListener("click", async () => {
+        const out = document.getElementById("ai-test-output");
+        out.classList.remove("hidden"); out.textContent = "Testing Gemini AI...";
+        try {
+          const res = await apiFetch("/api/ai?action=test", { method: "POST", body: JSON.stringify({ message: "Haan ji interested hoon, main Physics padhata hoon aur 5000 YouTube subscribers hain" }) });
+          out.innerHTML = `<div><strong>AI Reply:</strong> ${escapeHtml(res.result.reply)}</div><div><strong>Detected Category:</strong> ${escapeHtml(res.result.detected_category || "None")} | <strong>Send Assets:</strong> ${res.result.send_assets ? "YES" : "Not yet"} | <strong>Demo Booked:</strong> ${res.result.demo_booked ? "YES" : "No"}</div>`;
+        } catch (err) { out.textContent = err.message; }
+      });
+
+      document.getElementById("form-ai-settings").addEventListener("submit", async e => {
+        e.preventDefault();
+        const fd = Object.fromEntries(new FormData(e.target).entries());
+        fd.ai_enabled = document.getElementById("ai-enabled-toggle").checked;
+        try {
+          const res = await apiFetch("/api/ai", { method: "PUT", body: JSON.stringify(fd) });
+          state.user = res.user; syncUserHeader(); showToast("AI Sales Agent settings saved!");
+        } catch (err) { showToast(err.message); }
+      });
+
+      document.getElementById("form-add-kit").addEventListener("submit", async e => {
+        e.preventDefault();
+        try {
+          await apiFetch("/api/ai", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+          e.target.reset(); await loadAiAndKits(); showToast("Category asset kit added!");
+        } catch (err) { showToast(err.message); }
+      });
+
+      document.getElementById("asset-kits-list").addEventListener("click", async e => {
+        const b = e.target.closest("[data-del-kit]"); if (!b) return;
+        await apiFetch(`/api/ai?id=${b.dataset.delKit}`, { method: "DELETE" });
+        await loadAiAndKits(); showToast("Kit removed");
+      });
+
+      // Webinars
+      document.getElementById("form-create-webinar").addEventListener("submit", async e => {
+        e.preventDefault();
+        try {
+          await apiFetch("/api/webinars", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
+          e.target.reset(); await loadWebinars(); showToast("Webinar created! Copy & share the public registration link.");
+        } catch (err) { showToast(err.message); }
+      });
+
+      document.getElementById("webinars-list").addEventListener("click", async e => {
+        const cp = e.target.closest("[data-copy-text]");
+        if (cp) { try { navigator.clipboard.writeText(cp.dataset.copyText); } catch (ex) {} showToast("Registration link copied!"); return; }
+        const del = e.target.closest("[data-del-webinar]");
+        if (del) { await apiFetch(`/api/webinars?id=${del.dataset.delWebinar}`, { method: "DELETE" }); await loadWebinars(); showToast("Webinar deleted"); }
+      });
+    }
+
+    async function init() {
+      bindEvents();
+      try { localStorage.removeItem("appx_vercel_token"); state.token = localStorage.getItem("appx_signed_in"); } catch (e) {}
+      scheduleInboxRefresh();
+      if (!state.token) return;
+      if (await acceptTeamInvite()) return;
+      try {
+        await refreshData();
+        if (location.hash === "#access-revoked") {
+          history.replaceState(null, "", location.pathname + location.search);
+          showToast("Your team access ended. You are in your own workspace.");
+        }
+        if (state.leads.length) await openChatThread(state.leads[0].id);
+        loadMetaTemplates(true);
+      } catch (e) { signOutLocal(); }
+    }
+
+    let lastTemplateCheck = 0;
+    function scheduleInboxRefresh() {
+      setTimeout(async () => {
+        try {
+          if (!state.token) return;
+          const token = state.token;
+          const leadId = state.activeLeadId;
+          if (!document.getElementById("modal-tpl-studio").classList.contains("hidden") && Date.now() - lastTemplateCheck >= 30000) {
+            lastTemplateCheck = Date.now();
+            await loadMetaTemplates(true);
+          }
+          const previousLead = state.leads.find(lead => lead.id === leadId);
+          await refreshData();
+          if (token !== state.token || state.activeTab !== "chat" || leadId !== state.activeLeadId) return;
+          const activeLead = state.leads.find(lead => lead.id === leadId);
+          if (activeLead && (activeLead.unread_count > 0 || activeLead.updated_at !== previousLead?.updated_at)) {
+            await refreshChatMessages(leadId);
+          }
+        } catch (e) {
+          // Retry transient failures on the next refresh.
+        } finally {
+          scheduleInboxRefresh();
+        }
+      }, 6000);
+    }
+
+    init();
+  </script>
+</body>
+</html>
