@@ -687,7 +687,7 @@
       if (options.body && typeof options.body === "string") headers["Content-Type"] = "application/json";
       const token = state.token;
       if (workspaceId) headers["X-AppX-Workspace"] = workspaceId;
-      const res = await fetch(url, { ...options, headers });
+      const res = await fetch(url, { credentials: "same-origin", ...options, headers });
       if (workspaceId && res.status === 403 && url === "/api/auth" && token === state.token) {
         document.getElementById("app-shell").classList.add("hidden");
         const own = new URL(location.href);
@@ -696,7 +696,14 @@
         location.replace(own);
       }
       const data = await res.json().catch(() => ({}));
-      if (res.status === 401 && token && token === state.token) { signOutLocal(); throw new Error("Session expired."); }
+      if (res.status === 401 && token && token === state.token && url !== "/api/auth") {
+        // Confirm expiration against the session endpoint before closing the workspace.
+        await apiFetch("/api/auth");
+      }
+      if (res.status === 401 && token && token === state.token && url === "/api/auth") {
+        signOutLocal();
+        throw new Error("Session expired. Please sign in again.");
+      }
       if (!res.ok) {
         const error = new Error(data.error || `Request failed (${res.status})`);
         error.code = data.code;
@@ -1845,9 +1852,10 @@ Regards,
 
     async function init() {
       bindEvents();
-      try { localStorage.removeItem("appx_vercel_token"); state.token = localStorage.getItem("appx_signed_in"); } catch (e) {}
+      // The HttpOnly session cookie is the source of truth, even without local storage.
+      state.token = crypto.randomUUID();
+      try { localStorage.removeItem("appx_vercel_token"); } catch {}
       scheduleInboxRefresh();
-      if (!state.token) return;
       if (await acceptTeamInvite()) return;
       try {
         await refreshData();
@@ -1857,7 +1865,9 @@ Regards,
         }
         if (state.leads.length) await openChatThread(state.leads[0].id);
         loadMetaTemplates(true);
-      } catch (e) { signOutLocal(); }
+      } catch (e) {
+        if (state.token) showToast("Could not finish loading AppX. Retrying your session.");
+      }
     }
 
     let lastTemplateCheck = 0;

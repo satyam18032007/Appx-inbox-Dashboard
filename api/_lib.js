@@ -62,12 +62,20 @@ async function requireUser(req, res, scope) {
   const sb = getSupabase();
   const { data: session, error: sErr } = await sb.from("sessions").select("user_id").eq("token", sessionDigest(token))
     .gt("created_at", new Date(Date.now() - SESSION_SECONDS * 1000).toISOString()).maybeSingle();
-  if (sErr || !session) {
+  if (sErr) {
+    res.status(503).json({ error: "Session check is temporarily unavailable. Please retry." });
+    return null;
+  }
+  if (!session) {
     res.status(401).json({ error: "Session expired. Please sign in again." });
     return null;
   }
   const { data: user, error: uErr } = await sb.from("users").select("*").eq("id", session.user_id).maybeSingle();
-  if (uErr || !user) {
+  if (uErr) {
+    res.status(503).json({ error: "Account check is temporarily unavailable. Please retry." });
+    return null;
+  }
+  if (!user) {
     res.status(401).json({ error: "User not found." });
     return null;
   }
