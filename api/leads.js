@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate } = require("./_lib");
 
 const VALID_STATUSES = [
   "No Response",
@@ -54,6 +54,12 @@ module.exports = async (req, res) => {
           (!Array.isArray(template_params) || template_params.some(value => typeof value !== "string" || !value.trim()))) {
         return res.status(400).json({ error: "Fill all template values before running the campaign." });
       }
+      const approvedTemplate = send_template
+        ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
+        : null;
+      const fixedTemplateBody = approvedTemplate && template_params !== undefined
+        ? formatSentTemplate(approvedTemplate, template_params)
+        : null;
       const today = new Date().toISOString().slice(0, 10);
       let added = 0;
       let skipped = 0;
@@ -115,6 +121,7 @@ module.exports = async (req, res) => {
               ? [name, business]
               : []);
           try {
+            const storedBody = fixedTemplateBody ?? formatSentTemplate(approvedTemplate, params);
             const waId = await sendMetaWhatsApp({
               user,
               toPhone: phone,
@@ -127,7 +134,7 @@ module.exports = async (req, res) => {
               user_id: user.id,
               lead_id: leadId,
               direction: "outgoing",
-              body: `[Template: ${template_name}]`,
+              body: storedBody,
               wa_message_id: waId,
               delivery_status: "Sent",
             });

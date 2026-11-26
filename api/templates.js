@@ -1,4 +1,4 @@
-const { getSupabase, requireUser } = require("./_lib");
+const { getSupabase, requireUser, describeWhatsAppTemplate } = require("./_lib");
 
 async function resolveWabaId(user) {
   const version = user.graph_version || "v21.0";
@@ -45,19 +45,7 @@ module.exports = async (req, res) => {
       if (!resp.ok) {
         return res.status(400).json({ error: data?.error?.message || "Failed to fetch Meta templates" });
       }
-      const templates = (data.data || []).map((t) => {
-        const bodyComp = (t.components || []).find((c) => c.type === "BODY");
-        const bodyText = bodyComp?.text || "";
-        const uniqueVars = [...new Set(bodyText.match(/\{\{\d+\}\}/g) || [])].length;
-        return {
-          name: t.name,
-          status: t.status,
-          category: t.category,
-          language: t.language,
-          body: bodyText,
-          var_count: uniqueVars,
-        };
-      });
+      const templates = (data.data || []).map(describeWhatsAppTemplate);
       return res.status(200).json({ waba_id: wabaId, templates });
     }
 

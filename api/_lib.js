@@ -225,6 +225,48 @@ async function sendMetaWhatsApp({
   return data?.messages?.[0]?.id || "";
 }
 
+function renderTemplateText(template, values) {
+  const body = template.body.replace(/\{\{\s*(\d+)\s*\}\}/g, (marker, index) => values[Number(index) - 1] ?? marker);
+  return [template.header, body, template.footer].filter(Boolean).join("\n\n");
+}
+
+function describeWhatsAppTemplate(template) {
+  const components = template.components || [];
+  const text = type => components.find(component => component.type === type)?.text || "";
+  const body = text("BODY");
+  const positions = [...body.matchAll(/\{\{\s*(\d+)\s*\}\}/g)].map(match => Number(match[1]));
+  return {
+    name: template.name, status: template.status, category: template.category, language: template.language,
+    header: text("HEADER"), body, footer: text("FOOTER"), var_count: Math.max(0, ...positions),
+  };
+}
+
+async function getApprovedWhatsAppTemplate(user, name, language) {
+  if (!user.whatsapp_token || !/^\d+$/.test(user.waba_id || "")) {
+    throw new Error("Sync templates or save your WABA ID before sending a template.");
+  }
+  const version = /^v\d+\.\d+$/.test(user.graph_version || "") ? user.graph_version : "v21.0";
+  const query = new URLSearchParams({ name, language, fields: "name,status,language,components" });
+  const response = await fetch(`https://graph.facebook.com/${version}/${user.waba_id}/message_templates?${query}`, {
+    headers: { Authorization: `Bearer ${user.whatsapp_token}` },
+    signal: AbortSignal.timeout(10000),
+  });
+  const data = await response.json();
+  if (!response.ok) throw new Error(data.error?.message || "Could not verify template with Meta.");
+  const template = (data.data || []).find(item =>
+    item.name === name && item.language === language && item.status === "APPROVED");
+  if (!template) throw new Error("Meta no longer lists this template and language as approved. Sync and select again.");
+  return describeWhatsAppTemplate(template);
+}
+
+function formatSentTemplate(template, values) {
+  if (!Array.isArray(values) || values.length !== template.var_count ||
+      values.some(value => typeof value !== "string" || !value.trim())) {
+    throw new Error(`Template ${template.name} needs ${template.var_count} filled body values.`);
+  }
+  return `[Template: ${template.name}]\n${renderTemplateText(template, values.map(value => value.trim()))}`;
+}
+
 async function takeWhatsAppThread(user, phone) {
   if (!user.whatsapp_token || !/^\d+$/.test(user.phone_number_id || "") || !/^\d+$/.test(phone)) {
     throw new Error("Connect a valid WhatsApp number before taking chat control.");
@@ -367,6 +409,9 @@ module.exports = {
   verifyMetaCredentials,
   downloadMetaMediaBase64,
   sendMetaWhatsApp,
+  describeWhatsAppTemplate,
+  getApprovedWhatsAppTemplate,
+  formatSentTemplate,
   takeWhatsAppThread,
   sendOwnerAlert,
   getGeminiApiKey,

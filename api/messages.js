@@ -1,4 +1,4 @@
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, takeWhatsAppThread } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, takeWhatsAppThread } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -60,6 +60,10 @@ module.exports = async (req, res) => {
         return res.status(400).json({ error: "Reply window closed. Choose an approved template to start the conversation.", code: "reply_window_closed" });
       }
 
+      const storedBody = mode === "template"
+        ? formatSentTemplate(await getApprovedWhatsAppTemplate(user, template_name, template_lang), template_params)
+        : cleanText;
+
       // Send live via Meta WhatsApp Cloud API (throws real error if not connected or Meta rejects)
       const waMsgId = await sendMetaWhatsApp({
         user,
@@ -71,7 +75,6 @@ module.exports = async (req, res) => {
         templateParams: template_params,
       });
 
-      const storedBody = mode === "template" ? `[Template: ${template_name}]${cleanText ? " " + cleanText : ""}` : cleanText;
       const { data: msg, error: mErr } = await sb
         .from("messages")
         .insert({
