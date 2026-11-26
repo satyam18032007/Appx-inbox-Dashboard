@@ -544,7 +544,10 @@
       </div>
 
       <form id="form-create-template" class="space-y-3 text-xs bg-slate-50 p-4 rounded-xl border border-slate-200">
-        <div class="font-semibold text-slate-900">Apply for a New WhatsApp Template</div>
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <div class="font-semibold text-slate-900">Apply for a New WhatsApp Template</div>
+          <button id="btn-load-coaching-template" type="button" class="rounded-lg border border-indigo-300 bg-white px-3 py-1.5 font-medium text-indigo-700">Use AppX coaching draft</button>
+        </div>
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <input name="name" required placeholder="Template name (e.g. appx_offer_1)" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white" />
           <select name="category" class="px-2.5 py-2 rounded-lg border border-slate-300 bg-white">
@@ -773,6 +776,13 @@
           }
         }
       };
+
+      if (!count) {
+        const hint = document.createElement("p");
+        hint.className = "col-span-2 text-slate-600";
+        hint.textContent = "This approved message has fixed text. Use + Templates to create a version with editable values.";
+        panel.append(hint);
+      }
 
       if (count) {
         const controls = document.createElement("div");
@@ -1491,6 +1501,33 @@
       
       document.getElementById("btn-tpl-studio").addEventListener("click", () => { openModal("modal-tpl-studio"); loadMetaTemplates(false); });
       document.getElementById("btn-refresh-tpl-list").addEventListener("click", () => loadMetaTemplates(false));
+      document.getElementById("btn-load-coaching-template").addEventListener("click", e => {
+        const form = e.currentTarget.form;
+        const body = form.elements.body_text;
+        if (body.value.trim() && !confirm("Replace the current draft with the AppX coaching draft?")) return;
+        form.elements.name.value = "appx_coaching_intro_v1";
+        form.elements.category.value = "MARKETING";
+        form.elements.language.value = "en";
+        form.elements.sample_values.value = "Sir/Ma'am, your coaching business";
+        form.elements.quick_replies.value = "Book Demo, STOP";
+        body.value = `Hello {{1}},
+
+Scale your online coaching business with your own branded App & Website for {{2}}:
+
+✅ *Lifetime Validity*
+✅ *No Platform Fee*
+✅ *Unlimited Live Classes*
+✅ *Recorded Courses*
+✅ *Test Series & PDFs*
+✅ *Books & Digital Content*
+✅ *Your Own Brand Name & Logo*
+
+This communication is shared based on the details available in our records.
+
+Regards,
+*APPX Team*`;
+        body.focus();
+      });
       document.getElementById("form-create-template").addEventListener("submit", async e => {
         e.preventDefault();
         const btn = document.getElementById("btn-submit-meta-tpl");
