@@ -1,5 +1,5 @@
 const crypto = require("node:crypto");
-const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
+const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
@@ -270,7 +270,11 @@ module.exports = async (req, res) => {
 
                 if (historyError || kitsError) throw new Error("AI context lookup failed");
                 const audioMedia = audioId ? await downloadMetaMediaBase64(user, audioId) : null;
-                const aiOut = await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia, latestMessage: text });
+                const directCategory = mtype === "text" && lead.ai_stage === "awaiting_coaching_subject" && !lead.assets_sent
+                  ? matchCoachingSubject(assetKits, text) : "";
+                const aiOut = directCategory
+                  ? { detected_category: directCategory, send_assets: true }
+                  : await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia, latestMessage: text });
                 if (!aiOut) throw new Error("Gemini returned no usable sales decision");
                 console.info("AI agent decision", { messageId: waId, reply: Boolean(aiOut.reply), assets: aiOut.send_assets, demo: aiOut.demo_booked });
                 if (aiOut) {
@@ -321,49 +325,65 @@ module.exports = async (req, res) => {
                     const matchedKit = selectAssetKit(assetKits, aiOut.detected_category);
 
                     if (matchedKit) {
-                      let assetUrl = matchedKit.asset_url;
-                      if (assetUrl?.startsWith("storage:")) {
-                        const path = assetUrl.slice("storage:".length);
-                        if (!path.startsWith(`${userId}/`)) throw new Error("Invalid brochure file ownership.");
-                        const { data, error } = await sb.storage.from(ASSET_BUCKET).createSignedUrl(path, 3600);
-                        if (error) throw error;
-                        assetUrl = data.signedUrl;
-                      }
-                      let assetWaId;
-                      if (matchedKit.asset_url) {
+                      const { data: claim, error: claimError } = await sb.from("leads").update({ assets_sent: true })
+                        .eq("user_id", userId).eq("id", lead.id).neq("reply_type", "Opted out")
+                        .or("assets_sent.is.null,assets_sent.eq.false").select("id").maybeSingle();
+                      if (claimError) throw claimError;
+                      if (claim) {
+                        let assetWaId;
                         try {
-                          assetWaId = await sendMetaWhatsApp({
-                            user,
-                            toPhone: fromPhone,
-                            text: matchedKit.message_text || `AppX ${matchedKit.category_name} Brochure`,
-                            mode: "media",
-                            mediaUrl: assetUrl,
-                            mediaType: matchedKit.asset_type || "document",
+                          let assetUrl = matchedKit.asset_url;
+                          if (assetUrl?.startsWith("storage:")) {
+                            const path = assetUrl.slice("storage:".length);
+                            if (!path.startsWith(`${userId}/`)) throw new Error("Invalid brochure file ownership.");
+                            const { data, error } = await sb.storage.from(ASSET_BUCKET).createSignedUrl(path, 3600);
+                            if (error) throw error;
+                            assetUrl = data.signedUrl;
+                          }
+                          if (matchedKit.asset_url) {
+                            try {
+                              assetWaId = await sendMetaWhatsApp({
+                                user,
+                                toPhone: fromPhone,
+                                text: matchedKit.message_text || `AppX ${matchedKit.category_name} Brochure`,
+                                mode: "media",
+                                mediaUrl: assetUrl,
+                                mediaType: matchedKit.asset_type || "document",
+                              });
+                            } catch (e) {
+                              // Fallback to sending link as text if media fetch fails
+                              assetWaId = await sendMetaWhatsApp({
+                                user,
+                                toPhone: fromPhone,
+                                text: `${matchedKit.message_text || ""}\n${assetUrl}`.trim(),
+                                mode: "reply",
+                              });
+                            }
+                          } else if (matchedKit.message_text) {
+                            assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
+                          }
+                          if (!assetWaId) throw new Error("Meta did not accept the brochure send.");
+                          const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || (matchedKit.asset_url?.startsWith("storage:") ? "Uploaded brochure" : matchedKit.asset_url)}`;
+                          await sb.from("messages").insert({
+                            user_id: userId,
+                            lead_id: lead.id,
+                            direction: "outgoing",
+                            body: assetBody,
+                            wa_message_id: assetWaId,
+                            delivery_status: "AI Sent",
                           });
-                        } catch (e) {
-                          // Fallback to sending link as text if media fetch fails
-                          assetWaId = await sendMetaWhatsApp({
-                            user,
-                            toPhone: fromPhone,
-                            text: `${matchedKit.message_text || ""}\n${assetUrl}`.trim(),
-                            mode: "reply",
-                          });
+                          leadUpdates.last_message = assetBody;
+                          leadUpdates.assets_sent = true;
+                          if (!["demo_requested", "demo_booked"].includes(lead.ai_stage)) leadUpdates.ai_stage = "awaiting_demo_time";
+                        } catch (error) {
+                          if (!assetWaId) {
+                            const { error: releaseError } = await sb.from("leads").update({ assets_sent: false })
+                              .eq("user_id", userId).eq("id", lead.id);
+                            if (releaseError) console.error("Brochure claim release failed:", releaseError.code);
+                          }
+                          throw error;
                         }
-                      } else if (matchedKit.message_text) {
-                        assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
                       }
-                      const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || (matchedKit.asset_url?.startsWith("storage:") ? "Uploaded brochure" : matchedKit.asset_url)}`;
-                      await sb.from("messages").insert({
-                        user_id: userId,
-                        lead_id: lead.id,
-                        direction: "outgoing",
-                        body: assetBody,
-                        wa_message_id: assetWaId,
-                        delivery_status: "AI Sent",
-                      });
-                      leadUpdates.last_message = assetBody;
-                      leadUpdates.assets_sent = true;
-                      if (!["demo_requested", "demo_booked"].includes(lead.ai_stage)) leadUpdates.ai_stage = "awaiting_demo_time";
                     }
                   }
 

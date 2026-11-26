@@ -465,6 +465,25 @@ function selectAssetKit(kits, detectedCategory) {
   return matches.length ? matches[crypto.randomInt(matches.length)] : null;
 }
 
+function matchCoachingSubject(kits, message) {
+  const normalize = value => String(value || "").trim().toLowerCase()
+    .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").replace(/^(math|maths)$/u, "mathematics");
+  const subjects = String(message || "").split(/[,/&+\n]|\s+and\s+/iu).map(normalize).filter(Boolean);
+  if (!subjects.length) return "";
+  const categories = new Map();
+  const recognized = new Set();
+  for (const kit of kits) {
+    if (!kit.asset_url && !kit.message_text) continue;
+    const keywords = [kit.category_name, ...String(kit.keywords || "").split(",")].map(normalize);
+    const matches = subjects.filter(subject => keywords.includes(subject));
+    if (!matches.length) continue;
+    categories.set(normalize(kit.category_name), kit.category_name);
+    for (const subject of matches) recognized.add(subject);
+  }
+  return categories.size === 1 && subjects.every(subject => recognized.has(subject))
+    ? categories.values().next().value : "";
+}
+
 async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia = null, latestMessage = "" }) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return null;
@@ -566,5 +585,6 @@ module.exports = {
   ASSET_BUCKET,
   ASSET_MEDIA,
   selectAssetKit,
+  matchCoachingSubject,
   runGeminiSalesAgent,
 };
