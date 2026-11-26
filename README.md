@@ -19,7 +19,7 @@ No MCP is required. You only need **2 free connections**:
 
 ---
 
-**Updating an existing deployment?** Run the updated `supabase_schema.sql` in the linked Supabase project before redeploying. Webinar registration uses the database function added by that script.
+**Updating an existing deployment?** Run the updated `supabase_schema.sql` in the linked Supabase project before redeploying.
 
 ## Step 2: Deploy to Vercel (2 Minutes, One-Time)
 1. Upload this folder (`appx_inbox_vercel`) to a new GitHub repository.

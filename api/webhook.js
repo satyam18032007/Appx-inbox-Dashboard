@@ -99,21 +99,29 @@ module.exports = async (req, res) => {
               text = `[${mtype} message]`;
             }
 
-            if (!fromPhone || !text) continue;
+            if (!fromPhone || !text || !waId) continue;
+
+            const { data: duplicate, error: lookupError } = await sb.from("messages")
+              .select("id").eq("user_id", userId).eq("direction", "incoming")
+              .eq("wa_message_id", waId).limit(1).maybeSingle();
+            if (lookupError) throw lookupError;
+            if (duplicate) continue;
 
             const { reply_type, auto_status } = classifyReply(text);
             const senderName = contactsMap[msg.from] || contactsMap[fromPhone] || `+${fromPhone}`;
 
-            const { data: existing } = await sb
+            const { data: existing, error: leadLookupError } = await sb
               .from("leads")
               .select("*")
               .eq("user_id", userId)
               .eq("phone", fromPhone)
               .maybeSingle();
 
+            if (leadLookupError) throw leadLookupError;
+
             let lead;
             if (!existing) {
-              const { data: inserted } = await sb
+              const { data: inserted, error: leadError } = await sb
                 .from("leads")
                 .insert({
                   user_id: userId,
@@ -132,10 +140,27 @@ module.exports = async (req, res) => {
                 })
                 .select("*")
                 .single();
+              if (leadError) throw leadError;
               lead = inserted;
             } else {
+              lead = existing;
+            }
+
+            const { error: insertError } = await sb.from("messages").insert({
+              user_id: userId,
+              lead_id: lead.id,
+              direction: "incoming",
+              body: text,
+              wa_message_id: waId,
+              ...(audioId ? { audio_media_id: String(audioId) } : {}),
+              delivery_status: "received",
+            });
+            if (insertError?.code === "23505") continue;
+            if (insertError) throw insertError;
+
+            if (existing) {
               const nextStatus = ["No Response", "Interested"].includes(existing.status) ? auto_status : existing.status;
-              const { data: updated } = await sb
+              const { data: updated, error: updateError } = await sb
                 .from("leads")
                 .update({
                   last_message: text,
@@ -151,32 +176,25 @@ module.exports = async (req, res) => {
                 .eq("user_id", userId)
                 .select("*")
                 .single();
-              lead = updated;
+              if (updateError) console.error("WhatsApp lead update failed:", updateError.code);
+              lead = updated || existing;
             }
 
-            if (!lead) continue;
-
-            await sb.from("messages").insert({
-              user_id: userId,
-              lead_id: lead.id,
-              direction: "incoming",
-              body: text,
-              wa_message_id: waId,
-              ...(audioId ? { audio_media_id: String(audioId) } : {}),
-              delivery_status: "received",
-            });
             processed++;
 
             // === AI SALES QUALIFIER AGENT (Gemini + Category Assets + Owner Demo Alert) ===
             if (user.ai_enabled && getGeminiApiKey() && !lead.ai_paused && reply_type !== "Opted out" && reply_type !== "Not interested") {
               try {
-                const [{ data: history = [] }, { data: assetKits = [] }] = await Promise.all([
+                const [{ data: history, error: historyError }, { data: assetKits, error: kitsError }] = await Promise.all([
                   sb.from("messages").select("direction, body").eq("lead_id", lead.id).eq("user_id", userId).order("created_at", { ascending: false }).order("id", { ascending: false }).limit(12),
                   sb.from("asset_kits").select("*").eq("user_id", userId),
                 ]);
 
+                if (historyError || kitsError) throw new Error("AI context lookup failed");
                 const audioMedia = audioId ? await downloadMetaMediaBase64(user, audioId) : null;
-                const aiOut = await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia });
+                const aiOut = await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia, latestMessage: text });
+                if (!aiOut) throw new Error("Gemini returned no usable sales decision");
+                console.info("AI agent decision", { messageId: waId, reply: Boolean(aiOut.reply), assets: aiOut.send_assets, demo: aiOut.demo_booked });
                 if (aiOut) {
                   if (audioMedia && aiOut.voice_transcript) {
                     await sb.from("messages").insert({
@@ -193,18 +211,27 @@ module.exports = async (req, res) => {
                   const ceiling = Number(user.ai_max_questions ?? 0);
                   const atCeiling = ceiling > 0 && asked >= ceiling;
 
-                  if (aiOut.reply && !(atCeiling && aiOut.asked_a_question)) {
-                    const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: aiOut.reply, mode: "reply" });
+                  const qualificationAllowed = !atCeiling || !aiOut.asked_a_question;
+                  let reply = qualificationAllowed ? aiOut.reply : "";
+                  if (!reply && aiOut.demo_booked) {
+                    reply = "Demo time share karne ke liye thanks. Team availability check karke slot aur meeting link confirm karegi.";
+                  }
+                  const reschedule = /^reschedule[.!?]?$/i.test(text.trim());
+                  if (!reply && (reschedule || aiOut.demo_requested)) {
+                    reply = "Sure, demo ke liye apni preferred date aur time bata dijiye.";
+                  }
+                  if (reply) {
+                    const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });
                     await sb.from("messages").insert({
                       user_id: userId,
                       lead_id: lead.id,
                       direction: "outgoing",
-                      body: aiOut.reply,
+                      body: reply,
                       wa_message_id: replyWaId,
                       delivery_status: "AI Sent",
                     });
-                    if (aiOut.asked_a_question) leadUpdates.ai_questions_asked = asked + 1;
-                    leadUpdates.last_message = aiOut.reply;
+                    if (qualificationAllowed && aiOut.asked_a_question) leadUpdates.ai_questions_asked = asked + 1;
+                    leadUpdates.last_message = reply;
                   }
 
                   // 2. Send Category-Based Brochure / Voucher / Assets once qualified
@@ -255,8 +282,8 @@ module.exports = async (req, res) => {
                   }
 
                   // Notify the owner and keep proposed slots separate from confirmed bookings.
-                  if (aiOut.demo_booked && !["Demo Booked", "Demo Done", "Sold"].includes(lead.status)) {
-                    const slotText = aiOut.demo_time_text;
+                  if ((reschedule || aiOut.demo_requested || aiOut.demo_booked) && !["Demo Done", "Sold"].includes(lead.status)) {
+                    const slotText = aiOut.demo_booked ? aiOut.demo_time_text : "Awaiting preferred date and time";
                     const category = aiOut.detected_category || lead.detected_category || "General";
                     const requestNote = `Demo requested: ${slotText} (${category})`;
                     if (lead.reply_type !== "Opted out" && !String(lead.notes || "").split(" | ").includes(requestNote)) {
@@ -274,7 +301,7 @@ Check availability, send the Google Meet/video link and confirm the slot with th
                 }
               } catch (aiErr) {
                 // Never fail webhook acknowledgement if AI errors
-                console.error("AI agent error:", aiErr.message);
+                console.error("AI agent error:", waId, aiErr.message);
               }
             }
           }

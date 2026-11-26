@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AppX Inbox — WhatsApp AI CRM &amp; Webinar Studio</title>
+  <title>AppX Inbox — WhatsApp AI CRM</title>
   <script src="https://cdn.tailwindcss.com/3.4.17"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <style>
@@ -24,7 +24,7 @@
     .sheet-cell-input:focus { outline: none; border-color: #6366f1; background: #ffffff; box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.15); }
   </style>
   <style>
-    #app-shell:is([data-role="operator"], [data-role="viewer"]) :is([data-tab="ai"], [data-tab="webinars"], #btn-tpl-studio, #btn-meta-setup, #setup-banner, #btn-bulk-open, #btn-sheet-bulk, #btn-dash-bulk, #btn-dash-export, #btn-sheet-export, [data-action="delete-lead"]),
+    #app-shell:is([data-role="operator"], [data-role="viewer"]) :is([data-tab="ai"], #btn-tpl-studio, #btn-meta-setup, #setup-banner, #btn-bulk-open, #btn-sheet-bulk, #btn-dash-bulk, #btn-dash-export, #btn-sheet-export, [data-action="delete-lead"]),
     #app-shell[data-role="viewer"] :is(#chat-composer, #btn-save-details, #btn-inbox-add, #btn-dash-add-lead) { display: none !important; }
   </style>
   <script src="/keyboard.js" defer></script>
@@ -39,7 +39,7 @@
         <div class="w-9 h-9 rounded-lg bg-violet-300 text-[#1e1736] font-bold flex items-center justify-center text-sm">Ax</div>
         <div>
           <div class="font-semibold text-base leading-tight">AppX Inbox</div>
-          <div class="text-xs text-violet-200">WhatsApp AI Sales Agent • CRM • Webinar Studio</div>
+          <div class="text-xs text-violet-200">WhatsApp AI Sales Agent • CRM</div>
         </div>
       </div>
 
@@ -88,7 +88,6 @@
               <span>AI Agent</span>
               <span id="nav-ai-dot" class="w-1.5 h-1.5 rounded-full bg-slate-400"></span>
             </button>
-            <button data-tab="webinars" class="nav-tab px-3 py-1 rounded-md text-xs font-medium text-violet-100 hover:text-white transition">Webinars</button>
           </nav>
         </div>
 
@@ -110,7 +109,6 @@
         <button data-tab="dashboard" class="mob-tab px-2.5 py-1 rounded text-violet-200">Dashboard</button>
         <button data-tab="sheet" class="mob-tab px-2.5 py-1 rounded text-violet-200">Sheet</button>
         <button data-tab="ai" class="mob-tab px-2.5 py-1 rounded text-violet-200">AI Agent</button>
-        <button data-tab="webinars" class="mob-tab px-2.5 py-1 rounded text-violet-200">Webinars</button>
       </div>
     </header>
 
@@ -445,52 +443,6 @@
       </div>
     </section>
 
-    <!-- VIEW 5: WEBINAR STUDIO (webinar.gg-style) -->
-    <section id="view-webinars" class="hidden max-w-6xl w-full mx-auto px-4 sm:px-6 py-6 space-y-6">
-      <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <div>
-          <h1 class="text-xl sm:text-2xl font-bold text-slate-900">AppX Webinar Studio</h1>
-          <p class="text-sm text-slate-500">Host HD live webinars with screen sharing, chat, Q&amp;A, public registration pages, and automatic CRM lead capture — with zero Zoom/Meet license costs.</p>
-        </div>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
-        <form id="form-create-webinar" class="lg:col-span-4 bg-white rounded-xl border border-slate-200 p-5 shadow-sm space-y-3 text-xs h-fit">
-          <h2 class="font-semibold text-sm text-slate-900 border-b border-slate-100 pb-2">Create New Webinar</h2>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">Webinar Title *</label>
-            <input name="title" required placeholder="e.g. Launch Your Branded Teaching App in 7 Days" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
-          </div>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">Host Name</label>
-            <input name="host_name" placeholder="e.g. Satyam Shukla" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
-          </div>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">Date &amp; Time *</label>
-            <input name="scheduled_at" required placeholder="e.g. Sunday, 7:00 PM IST" class="w-full px-3 py-2 rounded-lg border border-slate-300" />
-          </div>
-          <div>
-            <label class="block font-medium text-slate-700 mb-1">Description</label>
-            <textarea name="description" rows="2" placeholder="What attendees will learn..." class="w-full px-3 py-2 rounded-lg border border-slate-300"></textarea>
-          </div>
-          <div class="grid grid-cols-2 gap-2">
-            <div>
-              <label class="block font-medium text-slate-700 mb-1">Live Offer Button</label>
-              <input name="cta_text" value="Book Free AppX Demo" class="w-full px-2.5 py-2 rounded-lg border border-slate-300" />
-            </div>
-            <div>
-              <label class="block font-medium text-slate-700 mb-1">Offer Link URL</label>
-              <input name="cta_url" placeholder="https://wa.me/91..." class="w-full px-2.5 py-2 rounded-lg border border-slate-300" />
-            </div>
-          </div>
-          <button type="submit" class="w-full py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold transition">Create Webinar &amp; Get Link</button>
-        </form>
-
-        <div class="lg:col-span-8 space-y-4">
-          <div id="webinars-list" class="space-y-3"></div>
-        </div>
-      </div>
-    </section>
   </div>
 
   <!-- MODAL: Meta WhatsApp Cloud API Setup -->
@@ -664,7 +616,7 @@
     const STATUS_BADGES = { "No Response": "bg-slate-100 text-slate-700", "Interested": "bg-purple-100 text-purple-700", "Demo Requested": "bg-amber-100 text-amber-800", "Demo Booked": "bg-blue-100 text-blue-700", "Demo Done": "bg-indigo-100 text-indigo-700", "Follow-up Due": "bg-amber-100 text-amber-800", "Sold": "bg-emerald-100 text-emerald-800", "Not Interested": "bg-rose-100 text-rose-700" };
 
     const state = {
-      token: null, user: null, authMode: "login", leads: [], kits: [], webinars: [],
+      token: null, user: null, authMode: "login", leads: [], kits: [],
       messagesByLead: {}, activeTab: "chat", activeLeadId: null,
       replyTypeFilter: "All", ticketStateFilter: "All", composerMode: "reply", chartInstance: null
     };
@@ -958,35 +910,6 @@
         : `<div class="py-6 text-center text-slate-400">No category asset kits yet. Add Physics, UPSC, GPSC, or General above!</div>`;
     }
 
-    async function loadWebinars() {
-      const { webinars } = await apiFetch("/api/webinars");
-      state.webinars = webinars || [];
-      const box = document.getElementById("webinars-list");
-      box.innerHTML = state.webinars.length
-        ? state.webinars.map(w => {
-          const regUrl = `${window.location.origin}/webinar.html?id=${w.id}`;
-          const hostUrl = `${window.location.origin}/webinar.html?id=${w.id}&host=1`;
-          return `
-            <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm space-y-3">
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div class="font-semibold text-base text-slate-900">${escapeHtml(w.title)}</div>
-                  <div class="text-xs text-slate-500 mt-0.5">Host: ${escapeHtml(w.host_name)} • ${escapeHtml(w.scheduled_at)} • <strong>${w.registration_count || 0} registered</strong> • <strong>${w.joined_count || 0} joined</strong></div>
-                </div>
-                <div class="flex flex-wrap items-center gap-1.5">
-                  <a href="/api/webinars?action=export&amp;id=${encodeURIComponent(w.id)}" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-medium">Download Excel</a>
-                  <button data-copy-text="${escapeHtml(regUrl)}" class="px-3 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-medium">Copy Reg Link</button>
-                  <a href="${hostUrl}" target="_blank" class="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium">Start Live Room ↗</a>
-                  <button data-del-webinar="${w.id}" class="px-2.5 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-xs font-medium">Del</button>
-                </div>
-              </div>
-              <div class="text-xs text-slate-500 bg-slate-50 rounded-lg px-3 py-2 font-mono truncate">Public Link: ${escapeHtml(regUrl)}</div>
-            </div>
-          `;
-        }).join("")
-        : `<div class="bg-white rounded-xl border border-slate-200 p-10 text-center text-sm text-slate-400">No webinars created yet. Create your first webinar on the left!</div>`;
-    }
-
     function renderChatList() {
       const leads = state.leads;
       document.getElementById("cnt-all").textContent = leads.length;
@@ -1199,7 +1122,7 @@
 
     function switchTab(tab) {
       state.activeTab = tab;
-      ["chat", "dashboard", "sheet", "ai", "webinars"].forEach(t => document.getElementById(`view-${t}`).classList.toggle("hidden", t !== tab));
+      ["chat", "dashboard", "sheet", "ai"].forEach(t => document.getElementById(`view-${t}`).classList.toggle("hidden", t !== tab));
       document.querySelectorAll(".nav-tab").forEach(btn => {
         btn.className = btn.dataset.tab === tab
           ? "nav-tab px-3 py-1 rounded-md text-xs font-medium bg-white text-[#1e1736] transition flex items-center gap-1.5"
@@ -1212,7 +1135,6 @@
       if (tab === "sheet") renderSheet();
       if (tab === "chat") renderChatList();
       if (tab === "ai") loadAiAndKits();
-      if (tab === "webinars") loadWebinars();
     }
 
     function parseCsvText(text) {
@@ -1775,21 +1697,6 @@
         await loadAiAndKits(); showToast("Kit removed");
       });
 
-      // Webinars
-      document.getElementById("form-create-webinar").addEventListener("submit", async e => {
-        e.preventDefault();
-        try {
-          await apiFetch("/api/webinars", { method: "POST", body: JSON.stringify(Object.fromEntries(new FormData(e.target).entries())) });
-          e.target.reset(); await loadWebinars(); showToast("Webinar created! Copy & share the public registration link.");
-        } catch (err) { showToast(err.message); }
-      });
-
-      document.getElementById("webinars-list").addEventListener("click", async e => {
-        const cp = e.target.closest("[data-copy-text]");
-        if (cp) { try { navigator.clipboard.writeText(cp.dataset.copyText); } catch (ex) {} showToast("Registration link copied!"); return; }
-        const del = e.target.closest("[data-del-webinar]");
-        if (del) { await apiFetch(`/api/webinars?id=${del.dataset.delWebinar}`, { method: "DELETE" }); await loadWebinars(); showToast("Webinar deleted"); }
-      });
     }
 
     async function init() {

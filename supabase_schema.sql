@@ -94,80 +94,9 @@ create table if not exists public.asset_kits (
   created_at timestamptz default now()
 );
 
--- Webinars (webinar.gg-style rooms + registration)
-create table if not exists public.webinars (
-  id uuid primary key default gen_random_uuid(),
-  user_id uuid not null references public.users(id) on delete cascade,
-  title text not null,
-  host_name text default '',
-  description text default '',
-  scheduled_at text not null,
-  room_slug text not null unique,
-  cta_text text default 'Book Free AppX Demo',
-  cta_url text default '',
-  status text default 'Scheduled',
-  created_at timestamptz default now()
-);
-
-create table if not exists public.webinar_registrations (
-  id bigserial primary key,
-  webinar_id uuid not null references public.webinars(id) on delete cascade,
-  user_id uuid not null references public.users(id) on delete cascade,
-  name text not null,
-  phone text not null,
-  email text default '',
-  attended boolean default false,
-  created_at timestamptz default now(),
-  unique (webinar_id, phone)
-);
-
--- Save the registration and its CRM lead together. Repeat registrations keep existing lead history.
-create or replace function public.register_webinar_attendee(
-  p_webinar_id uuid, p_name text, p_phone text, p_email text
-)
-returns table (title text, room_slug text)
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-declare
-  webinar public.webinars%rowtype;
-  registration_date text := to_char(now() at time zone 'UTC', 'YYYY-MM-DD');
-begin
-  select w.* into webinar from public.webinars w where w.id = p_webinar_id;
-  if not found then
-    return;
-  end if;
-
-  insert into public.webinar_registrations (webinar_id, user_id, name, phone, email)
-  values (webinar.id, webinar.user_id, p_name, p_phone, p_email)
-  on conflict (webinar_id, phone) do update
-  set name = excluded.name, email = excluded.email;
-
-  insert into public.leads (
-    user_id, name, phone, campaign_name, reply_type, ticket_state, status,
-    has_responded, demo_date, followup_date, notes, last_message
-  ) values (
-    webinar.user_id, p_name, p_phone, 'Webinar: ' || webinar.title, 'Interested', 'Pending',
-    'Demo Booked', true, registration_date, registration_date,
-    format('Registered for webinar "%s" (%s)', webinar.title, webinar.scheduled_at),
-    'Registered for webinar: ' || webinar.title
-  )
-  on conflict (user_id, phone) do nothing;
-
-  return query select webinar.title, webinar.room_slug;
-end;
-$$;
-
-revoke execute on function public.register_webinar_attendee(uuid, text, text, text)
-  from public, anon, authenticated;
-grant execute on function public.register_webinar_attendee(uuid, text, text, text)
-  to service_role;
-
 create index if not exists idx_leads_user_updated on public.leads (user_id, updated_at desc);
 create index if not exists idx_messages_lead_created on public.messages (lead_id, created_at asc);
 create index if not exists idx_assets_user on public.asset_kits (user_id);
-create index if not exists idx_webinars_user on public.webinars (user_id, created_at desc);
 
 -- AppX team memberships and expiring invitations. Only the backend service role uses this table.
 create table if not exists public.team_access (
@@ -194,8 +123,6 @@ alter table public.sessions enable row level security;
 alter table public.leads enable row level security;
 alter table public.messages enable row level security;
 alter table public.asset_kits enable row level security;
-alter table public.webinars enable row level security;
-alter table public.webinar_registrations enable row level security;
 
 -- Webhook signing and distributed authentication request limits.
 alter table public.users add column if not exists meta_app_secret text default '';
@@ -239,3 +166,23 @@ grant execute on function public.appx_allow_auth_request(text) to service_role;
 
 -- Preserve Meta audio IDs for authorized Inbox playback.
 alter table public.messages add column if not exists audio_media_id text;
+
+
+-- WhatsApp may deliver an incoming message more than once.
+begin;
+lock table public.messages in share row exclusive mode;
+with duplicates as (
+  select id, row_number() over (
+    partition by user_id, wa_message_id order by created_at asc nulls last, id asc
+  ) as occurrence
+  from public.messages
+  where direction = 'incoming' and wa_message_id <> ''
+)
+delete from public.messages
+using duplicates
+where messages.id = duplicates.id and duplicates.occurrence > 1;
+
+create unique index if not exists idx_messages_unique_incoming_whatsapp_id
+  on public.messages (user_id, wa_message_id)
+  where direction = 'incoming' and wa_message_id <> '';
+commit;
