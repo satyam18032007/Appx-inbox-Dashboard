@@ -176,7 +176,7 @@ module.exports = async (req, res) => {
                 ]);
 
                 const aiOut = await runGeminiSalesAgent({ user, lead, history: history.slice().reverse(), assetKits, audioMedia });
-                if (aiOut && aiOut.reply) {
+                if (aiOut) {
                   if (audioMedia && aiOut.voice_transcript) {
                     await sb.from("messages").insert({
                       user_id: userId,
@@ -188,23 +188,23 @@ module.exports = async (req, res) => {
                   }
                   const leadUpdates = { updated_at: new Date().toISOString() };
                   if (aiOut.detected_category) leadUpdates.detected_category = aiOut.detected_category;
-                  if (aiOut.asked_a_question) {
-                    const asked = Number(lead.ai_questions_asked || 0);
-                    if (asked >= Number(user.ai_max_questions || 3)) continue;
-                    leadUpdates.ai_questions_asked = asked + 1;
-                  }
+                  const asked = Number(lead.ai_questions_asked || 0);
+                  const ceiling = Number(user.ai_max_questions ?? 0);
+                  const atCeiling = ceiling > 0 && asked >= ceiling;
 
-                  // 1. Send AI conversational reply
-                  const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: aiOut.reply, mode: "reply" });
-                  await sb.from("messages").insert({
-                    user_id: userId,
-                    lead_id: lead.id,
-                    direction: "outgoing",
-                    body: aiOut.reply,
-                    wa_message_id: replyWaId,
-                    delivery_status: "AI Sent",
-                  });
-                  leadUpdates.last_message = aiOut.reply;
+                  if (aiOut.reply && !(atCeiling && aiOut.asked_a_question)) {
+                    const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: aiOut.reply, mode: "reply" });
+                    await sb.from("messages").insert({
+                      user_id: userId,
+                      lead_id: lead.id,
+                      direction: "outgoing",
+                      body: aiOut.reply,
+                      wa_message_id: replyWaId,
+                      delivery_status: "AI Sent",
+                    });
+                    if (aiOut.asked_a_question) leadUpdates.ai_questions_asked = asked + 1;
+                    leadUpdates.last_message = aiOut.reply;
+                  }
 
                   // 2. Send Category-Based Brochure / Voucher / Assets once qualified
                   if (aiOut.send_assets && !lead.assets_sent && assetKits.length > 0) {
@@ -212,13 +212,13 @@ module.exports = async (req, res) => {
                     const matchedKit =
                       assetKits.find((k) => k.category_name.toLowerCase() === targetCat) ||
                       assetKits.find((k) => String(k.keywords || "").toLowerCase().split(",").some((kw) => kw.trim() && targetCat.includes(kw.trim()))) ||
-                      assetKits.find((k) => k.category_name.toLowerCase() === "general") ||
-                      assetKits[0];
+                      assetKits.find((k) => k.category_name.toLowerCase() === "general");
 
-                    if (matchedKit) {
+                    if (matchedKit && (matchedKit.asset_url || matchedKit.message_text)) {
+                      let assetWaId;
                       if (matchedKit.asset_url) {
                         try {
-                          await sendMetaWhatsApp({
+                          assetWaId = await sendMetaWhatsApp({
                             user,
                             toPhone: fromPhone,
                             text: matchedKit.message_text || `AppX ${matchedKit.category_name} Brochure`,
@@ -228,7 +228,7 @@ module.exports = async (req, res) => {
                           });
                         } catch (e) {
                           // Fallback to sending link as text if media fetch fails
-                          await sendMetaWhatsApp({
+                          assetWaId = await sendMetaWhatsApp({
                             user,
                             toPhone: fromPhone,
                             text: `${matchedKit.message_text || ""}\n${matchedKit.asset_url}`.trim(),
@@ -236,22 +236,25 @@ module.exports = async (req, res) => {
                           });
                         }
                       } else if (matchedKit.message_text) {
-                        await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
+                        assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
                       }
+                      const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || matchedKit.asset_url}`;
                       await sb.from("messages").insert({
                         user_id: userId,
                         lead_id: lead.id,
                         direction: "outgoing",
-                        body: `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || matchedKit.asset_url}`,
+                        body: assetBody,
+                        wa_message_id: assetWaId,
                         delivery_status: "AI Sent",
                       });
+                      leadUpdates.last_message = assetBody;
                       leadUpdates.assets_sent = true;
-                      leadUpdates.ai_stage = "awaiting_demo_time";
+                      if (lead.ai_stage !== "demo_booked") leadUpdates.ai_stage = "awaiting_demo_time";
                     }
                   }
 
                   // 3. Demo Booked -> Update CRM + Instant Alert to Owner's Phone (SMS / WhatsApp)
-                  if (aiOut.demo_booked) {
+                  if (aiOut.demo_booked && lead.ai_stage !== "demo_booked") {
                     const slotText = aiOut.demo_time_text || text;
                     leadUpdates.status = "Demo Booked";
                     leadUpdates.demo_date = today;

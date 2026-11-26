@@ -19,15 +19,19 @@ module.exports = async (req, res) => {
     if (req.method === "PUT") {
       const {
         ai_enabled = false,
-        ai_max_questions = 3,
+        ai_max_questions = user.ai_max_questions ?? 0,
         ai_system_prompt = "",
         owner_alert_phone = "",
         fast2sms_api_key = "",
       } = req.body || {};
 
+      const ceiling = Number(ai_max_questions);
+      if (!Number.isInteger(ceiling) || ceiling < 0 || ceiling > 8) {
+        return res.status(400).json({ error: "Set the optional question limit to 0 through 8." });
+      }
       const updates = {
         ai_enabled: Boolean(ai_enabled),
-        ai_max_questions: Math.max(1, Math.min(8, Number(ai_max_questions || 3))),
+        ai_max_questions: ceiling,
         ai_system_prompt: String(ai_system_prompt || "").trim(),
         owner_alert_phone: String(owner_alert_phone || "").trim(),
       };
@@ -52,7 +56,7 @@ module.exports = async (req, res) => {
       if (!apiKey) {
         return res.status(503).json({ error: "Gemini is not configured for this deployment." });
       }
-      const prompt = `Write a concise, practical system instruction (max 5 lines) for a Hinglish WhatsApp sales qualifier bot for this business: "${goal}". It should ask 2-3 short friendly questions one by one (subject/niche, audience size on YouTube/WhatsApp/FB, interest in app + social media handling), then share matching category brochures/vouchers, and finally ask for a convenient 15-min demo time. Return plain text only.`;
+      const prompt = `Write a concise, practical system instruction (max 5 lines) for a Hinglish WhatsApp sales qualifier bot for this business: "${goal}". Ask one question only when the conversation needs it. Share a relevant kit as soon as the lead is ready, skip a separate reply when the kit is enough, and stay silent when nothing is needed. Return plain text only.`;
       const suggested = await generateGeminiText(apiKey, {
         contents: [{ role: "user", parts: [{ text: prompt }] }],
       });

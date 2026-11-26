@@ -117,7 +117,7 @@ function sanitizeUser(u) {
     webhook_path: `/webhook/${u.id}`,
     ai_enabled: Boolean(u.ai_enabled),
     ai_configured: Boolean(getGeminiApiKey()),
-    ai_max_questions: Number(u.ai_max_questions || 3),
+    ai_max_questions: Number(u.ai_max_questions ?? 0),
     ai_system_prompt: u.ai_system_prompt || "",
     owner_alert_phone: u.owner_alert_phone || "",
     fast2sms_configured: Boolean(u.fast2sms_api_key),
@@ -331,12 +331,26 @@ async function generateGeminiText(apiKey, request) {
   return text;
 }
 
+function normalizeSalesDecision(result) {
+  if (!result || typeof result !== "object" || Array.isArray(result)) return null;
+  const text = key => typeof result[key] === "string" ? result[key].trim() : "";
+  return {
+    reply: text("reply"),
+    voice_transcript: text("voice_transcript"),
+    detected_category: text("detected_category"),
+    send_assets: result.send_assets === true,
+    demo_booked: result.demo_booked === true && Boolean(text("demo_time_text")),
+    demo_time_text: text("demo_time_text"),
+    asked_a_question: result.asked_a_question === true,
+  };
+}
+
 async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia = null }) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return null;
 
   const categoriesList = (assetKits || []).map((k) => `${k.category_name} (keywords: ${k.keywords || k.category_name})`).join("; ");
-  const maxQ = Number(user.ai_max_questions || 3);
+  const maxQ = Number(user.ai_max_questions ?? 0);
   const customInstructions =
     user.ai_system_prompt ||
     "You are an official, professional sales qualifier for AppX (branded Android/iOS apps + social media handling for educators, coaching institutes, and creators).";
@@ -345,21 +359,20 @@ async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia 
 
 STRICT OFFICIAL SALES QUALIFIER GUARDRAILS:
 1. STAY ON-TOPIC & PROFESSIONAL: Never make random/off-topic jokes, never fabricate prices, discounts, or fake promises. If asked exact pricing before demo, politely say pricing depends on their app & social media requirements and will be shared clearly on the 15-min live demo.
-2. DYNAMIC, NON-STATIC REPLIES: Always acknowledge what the customer just said (including voice notes!) before moving to the next step. Never repeat the same generic message twice.
+2. TURN DECISION: Read the conversation, including the latest text or voice note. Choose whichever action helps: a short reply, an asset alone, both if each adds value, or no outbound action. Set reply to an empty string for asset-only delivery, acknowledgements such as "thanks" or "ok" that need no answer, clear conversation endings, and opt-outs. Do not send assets on acknowledgements or opt-outs.
 3. ADAPTIVE LANGUAGE MIRRORING:
    - If customer writes/speaks in Hindi (Devanagari), reply in polite Hindi (Devanagari).
    - If customer writes/speaks in Hinglish (Roman Hindi), reply in polite Hinglish.
    - If customer writes/speaks in English, reply in crisp professional English.
    - If customer sends a voice note, listen to it carefully, summarize what they said in "voice_transcript", and respond directly to their points.
-4. STRUCTURED QUALIFICATION (Max ${maxQ} questions total — already asked: ${lead.ai_questions_asked || 0}):
-   - Ask 1 short question at a time: (a) Subject/exam they teach (Physics, Chemistry, UPSC, GPSC, etc.), (b) Existing YouTube/WhatsApp/Facebook audience size, (c) Whether they also want Social Media handling with their branded app.
-   - Do NOT keep asking questions endlessly. Once ${maxQ} questions are done OR customer already shared their subject & interest, set "send_assets": true (if assets_sent is currently ${lead.assets_sent ? "YES" : "NO"}) with the best matching "detected_category" from [${categoriesList || "General"}], and ask for their preferred demo date & time.
-5. DEMO BOOKING DETECTION: If customer gives a preferred date/time (e.g., "kal 5 baje", "tomorrow 4 PM", "Monday morning"), set "demo_booked": true and put the time in "demo_time_text".
+4. ADAPTIVE QUALIFICATION: There is no target number of questions. Ask at most one useful question per turn, and only if the information is missing and matters to the next action. Skip questions already answered. If the customer asks for a relevant resource or the chat already establishes enough interest and context, send the matching asset now, even after zero questions. Available categories: [${categoriesList || "none"}]. Assets already sent: ${lead.assets_sent ? "yes" : "no"}. Select General only as a relevant fallback. Never send a random category.
+   Optional safety ceiling: ${maxQ > 0 ? maxQ : "off"}. Qualification questions already asked: ${lead.ai_questions_asked || 0}. If the ceiling is reached, proceed with a useful answer or relevant asset, or stay silent. Do not ask another qualification question.
+5. DEMO DETECTION: Set demo_booked only when the customer actually proposes or confirms a demo time. Put the supplied time in demo_time_text. Requesting a brochure, asking for information, or suggesting a time for something unrelated does not book a demo.
 
-"asked_a_question" means you asked a new qualifying question about the customer's business. A scheduling request is a separate step. If the qualification limit has been reached, ask no further qualifying questions. Answer the customer and continue with assets or demo scheduling.
+These guardrails take precedence over any suggested fixed questionnaire in the business script. Set asked_a_question only if reply contains a new qualification question. Asking for a demo time is a separate action.
 Return STRICT JSON ONLY:
 {
-  "reply": "natural, concise 2-3 line official sales reply matching customer language",
+  "reply": "short reply in the customer language, or empty string",
   "voice_transcript": "short summary/transcript if audio was attached, else empty string",
   "detected_category": "exact category_name from kits or empty string",
   "send_assets": false,
@@ -388,10 +401,10 @@ Return STRICT JSON ONLY:
     generationConfig: { responseMimeType: "application/json" },
   });
   try {
-    return JSON.parse(raw);
+    return normalizeSalesDecision(JSON.parse(raw));
   } catch (e) {
     const match = raw.match(/\{[\s\S]*\}/);
-    return match ? JSON.parse(match[0]) : null;
+    return match ? normalizeSalesDecision(JSON.parse(match[0])) : null;
   }
 }
 
