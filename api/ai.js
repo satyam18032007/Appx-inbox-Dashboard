@@ -106,7 +106,17 @@ module.exports = async (req, res) => {
       return res.status(200).json({ result });
     }
 
-    if (req.method === "POST") {
+    if (req.method === "POST" || req.method === "PATCH") {
+      const editing = req.method === "PATCH";
+      const kitId = Number(req.query.id);
+      let existing = null;
+      if (editing) {
+        if (!Number.isSafeInteger(kitId) || kitId < 1) return res.status(400).json({ error: "Valid asset kit id required." });
+        const { data, error } = await sb.from("asset_kits").select("asset_url, asset_type").eq("id", kitId).eq("user_id", user.id).maybeSingle();
+        if (error) throw error;
+        if (!data) return res.status(404).json({ error: "Kit not found." });
+        existing = data;
+      }
       const { category_name = "", keywords = "", message_text = "", asset_url = "", asset_type = "document", asset_path = "" } = req.body || {};
       if (!String(category_name).trim()) {
         return res.status(400).json({ error: "Category name (e.g. Physics, UPSC, GPSC) is required." });
@@ -130,24 +140,27 @@ module.exports = async (req, res) => {
       } else if (attachment && !/^https?:\/\//i.test(attachment)) {
         return res.status(400).json({ error: "Enter a public HTTP(S) URL or select a file." });
       }
+      if (!attachment && !asset_path && existing) {
+        attachment = existing.asset_url || "";
+        attachmentType = existing.asset_type;
+      }
       if (!attachment && !String(message_text).trim()) {
         return res.status(400).json({ error: "Add a brochure file, link, or message." });
       }
 
-      const { data: kit, error } = await sb
-        .from("asset_kits")
-        .insert({
+      const values = {
           user_id: user.id,
           category_name: String(category_name).trim(),
           keywords: String(keywords || category_name).trim(),
           message_text: String(message_text).trim(),
           asset_url: attachment,
           asset_type: attachmentType,
-        })
-        .select("*")
-        .single();
+      };
+      const table = sb.from("asset_kits");
+      const query = editing ? table.update(values).eq("id", kitId).eq("user_id", user.id) : table.insert(values);
+      const { data: kit, error } = await query.select("*").single();
       if (error) throw error;
-      return res.status(201).json({ kit });
+      return res.status(editing ? 200 : 201).json({ kit });
     }
 
     if (req.method === "DELETE") {

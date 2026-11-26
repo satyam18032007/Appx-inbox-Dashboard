@@ -446,7 +446,9 @@
               <span class="block text-slate-600">JPG/PNG up to 5 MB, MP4 up to 16 MB, PDF up to 25 MB</span>
             </label>
             <textarea name="message_text" rows="3" maxlength="1024" placeholder="Message sent with the brochure (links, a sample, or an offer)" class="w-full px-2.5 py-2 rounded-lg border border-slate-300 bg-white"></textarea>
+            <p id="kit-edit-note" class="hidden text-slate-600">Leave the file and URL fields empty to keep the current attachment.</p>
             <button type="submit" class="px-4 py-2 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium">+ Add Category Asset Kit</button>
+            <button id="kit-edit-cancel" type="button" class="hidden px-4 py-2">Cancel edit</button>
           </form>
 
           <div id="asset-kits-list" class="divide-y divide-slate-100 max-h-64 overflow-y-auto text-xs"></div>
@@ -497,9 +499,14 @@
         <div><label class="block font-medium text-slate-700 mb-1">CSV File *</label><input type="file" name="file" accept=".csv" required class="w-full text-xs text-slate-600" /></div>
         <label class="flex items-center gap-2 pt-1 cursor-pointer">
           <input id="bulk-send-toggle" type="checkbox" name="send_template" class="rounded border-slate-300 text-indigo-600" />
-          <span class="text-slate-700 font-medium">Send approved Meta Template now</span>
+          <span class="text-slate-700 font-medium">Send approved Meta Template</span>
         </label>
         <div id="bulk-tpl-fields" class="hidden space-y-2">
+          <label class="block space-y-1">
+            <span>Schedule for later (optional, device local time)</span>
+            <input name="scheduled_at" type="datetime-local" class="block w-full rounded-lg border border-slate-300 bg-white p-2" />
+            <span class="block text-slate-600">Leave blank to send now. Scheduled campaigns support up to 50 rows, up to 7 days ahead.</span>
+          </label>
           <label class="flex items-start gap-2">
             <input type="checkbox" name="coaching_follow_up" class="mt-0.5 rounded border-slate-300" />
             <span>On YES, send AppX features and ask what they teach. The AI agent can then send a matching brochure and flag demo requests.</span>
@@ -521,6 +528,10 @@
           <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Import &amp; Run</button>
         </div>
       </form>
+      <details id="bulk-scheduled-list" class="mt-4 text-xs">
+        <summary class="cursor-pointer font-medium">Scheduled campaigns</summary>
+        <div id="bulk-scheduled-rows" class="mt-2 space-y-2"></div>
+      </details>
     </div>
   </div>
 
@@ -1023,6 +1034,7 @@
               <div class="text-slate-600 mt-0.5">${escapeHtml(k.message_text || "—")}</div>
               ${k.asset_url ? `<div class="text-indigo-600 truncate mt-0.5">${escapeHtml(k.asset_url.startsWith("storage:") ? "Uploaded " + k.asset_type : k.asset_url)}</div>` : ""}
             </div>
+            <button data-edit-kit="${k.id}" class="px-2 py-1 rounded bg-indigo-50 text-indigo-700 font-medium shrink-0">Edit</button>
             <button data-del-kit="${k.id}" class="px-2 py-1 rounded bg-rose-50 text-rose-700 font-medium shrink-0">Delete</button>
           </div>
         `).join("")
@@ -1754,8 +1766,37 @@ Regards,
         finally { btn.disabled = false; btn.textContent = "Save & Verify Connection"; }
       });
 
+      const scheduledList = document.getElementById("bulk-scheduled-list");
+      const scheduledRows = document.getElementById("bulk-scheduled-rows");
+      async function loadScheduledCampaigns() {
+        try {
+          const { campaigns } = await apiFetch("/api/leads?action=scheduled");
+          scheduledRows.innerHTML = campaigns.map(job => `<div class="flex items-center justify-between gap-2 border-b pb-1">
+            <span>${escapeHtml(job.campaign_name)} · ${escapeHtml(new Date(job.scheduled_at).toLocaleString())}
+              · ${escapeHtml(job.status.replaceAll("_", " "))}${job.result?.sent != null ? ` · Sent ${Number(job.result.sent)}` : ""}
+              ${job.result?.failed ? ` · Failed ${Number(job.result.failed)}` : ""}
+              ${job.result?.error ? ` · ${escapeHtml(job.result.error)}` : ""}
+            </span>
+            ${job.status === "queued" ? `<button type="button" class="text-rose-700" data-cancel-job="${escapeHtml(job.id)}">Cancel</button>` : ""}
+          </div>`).join("") || "No scheduled campaigns.";
+        } catch (error) { scheduledRows.textContent = error.message; }
+      }
+      scheduledList.addEventListener("toggle", () => { if (scheduledList.open) loadScheduledCampaigns(); });
+      scheduledRows.addEventListener("click", async e => {
+        const cancel = e.target.closest("[data-cancel-job]");
+        if (!cancel) return;
+        cancel.disabled = true;
+        try {
+          await apiFetch(`/api/leads?action=scheduled&id=${encodeURIComponent(cancel.dataset.cancelJob)}`, { method: "DELETE" });
+        } catch (error) { showToast(error.message); }
+        await loadScheduledCampaigns();
+      });
+
       document.getElementById("form-bulk-import").addEventListener("submit", async e => {
         e.preventDefault();
+        const submit = e.target.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
+        submit.disabled = true;
         const fd = new FormData(e.target);
         try {
           const rows = parseCsvText(await fd.get("file").text());
@@ -1766,6 +1807,7 @@ Regards,
               rows,
               campaign_name: fd.get("campaign_name") || "appx (Marketing)",
               send_template: Boolean(fd.get("send_template")),
+              scheduled_at: fd.get("send_template") && fd.get("scheduled_at") ? new Date(fd.get("scheduled_at")).toISOString() : "",
               coaching_follow_up: Boolean(fd.get("send_template") && fd.get("coaching_follow_up")),
               template_name: fd.get("template_name") || "",
               template_lang: fd.get("template_lang") || "en",
@@ -1777,9 +1819,16 @@ Regards,
           e.target.reset();
           renderTemplateValues(document.getElementById("bulk-template-select"));
           document.getElementById("bulk-tpl-fields").classList.add("hidden");
+          if (res.scheduled) {
+            scheduledList.open = true;
+            await loadScheduledCampaigns();
+            showToast("Campaign scheduled.");
+            return;
+          }
           closeModal("modal-bulk-import"); await refreshData();
           showToast(`Imported ${res.added} | Sent ${res.sent || 0}${res.failed ? ` | Failed ${res.failed}: ${res.lastError}` : ""}`);
         } catch (err) { showToast(err.message); }
+        finally { submit.disabled = false; }
       });
 
       document.getElementById("form-add-lead").addEventListener("submit", async e => {
@@ -1844,7 +1893,23 @@ Regards,
         finally { submit.disabled = false; }
       });
 
-      document.getElementById("form-add-kit").addEventListener("submit", async e => {
+      const kitForm = document.getElementById("form-add-kit");
+      const kitCancel = document.getElementById("kit-edit-cancel");
+      const kitEditNote = document.getElementById("kit-edit-note");
+      function setKitEdit(kit) {
+        kitForm.reset();
+        kitForm.dataset.editId = kit?.id || "";
+        kitCancel.classList.toggle("hidden", !kit);
+        kitEditNote.classList.toggle("hidden", !kit);
+        kitForm.querySelector('button[type="submit"]').textContent = kit ? "Save Kit Changes" : "+ Add Category Asset Kit";
+        if (!kit) return;
+        for (const field of ["category_name", "keywords", "message_text", "asset_type"]) {
+          kitForm.elements[field].value = kit[field] || "";
+        }
+        kitForm.elements.category_name.focus();
+      }
+      kitCancel.addEventListener("click", () => setKitEdit(null));
+      kitForm.addEventListener("submit", async e => {
         e.preventDefault();
         const form = e.currentTarget;
         const submit = form.querySelector('button[type="submit"]');
@@ -1868,13 +1933,20 @@ Regards,
             if (!uploaded.ok) throw new Error("Brochure upload failed. Please try again.");
             kit.asset_path = path;
           }
-          await apiFetch("/api/ai", { method: "POST", body: JSON.stringify(kit) });
-          form.reset(); await loadAiAndKits(); showToast("Category asset kit added!");
+          const id = form.dataset.editId;
+          await apiFetch(id ? `/api/ai?id=${encodeURIComponent(id)}` : "/api/ai", { method: id ? "PATCH" : "POST", body: JSON.stringify(kit) });
+          setKitEdit(null); await loadAiAndKits(); showToast(id ? "Kit updated!" : "Category asset kit added!");
         } catch (err) { showToast(err.message); }
-        finally { submit.disabled = false; submit.textContent = "+ Add Category Asset Kit"; }
+        finally { submit.disabled = false; submit.textContent = form.dataset.editId ? "Save Kit Changes" : "+ Add Category Asset Kit"; }
       });
 
       document.getElementById("asset-kits-list").addEventListener("click", async e => {
+        const edit = e.target.closest("[data-edit-kit]");
+        if (edit) {
+          const kit = state.kits.find(item => String(item.id) === edit.dataset.editKit);
+          if (kit && !kitForm.querySelector('button[type="submit"]').disabled) setKitEdit(kit);
+          return;
+        }
         const b = e.target.closest("[data-del-kit]"); if (!b) return;
         await apiFetch(`/api/ai?id=${b.dataset.delKit}`, { method: "DELETE" });
         await loadAiAndKits(); showToast("Kit removed");

@@ -467,7 +467,7 @@ function selectAssetKit(kits, detectedCategory) {
 
 function matchCoachingSubject(kits, message) {
   const normalize = value => String(value || "").trim().toLowerCase()
-    .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").replace(/^(math|maths)$/u, "mathematics");
+    .replace(/[.!?]+$/u, "").replace(/\s+/gu, " ").replace(/^(math|maths)$/u, "mathematics").replace(/^bio$/u, "biology");
   const subjects = String(message || "").split(/[,/&+\n]|\s+and\s+/iu).map(normalize).filter(Boolean);
   if (!subjects.length) return "";
   const categories = new Map();
