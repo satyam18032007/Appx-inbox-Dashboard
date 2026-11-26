@@ -18,10 +18,10 @@ module.exports = async (req, res) => {
 
     if (req.method === "PUT") {
       const {
-        ai_enabled = false,
+        ai_enabled = user.ai_enabled,
         ai_max_questions = user.ai_max_questions ?? 0,
-        ai_system_prompt = "",
-        owner_alert_phone = "",
+        ai_system_prompt = user.ai_system_prompt ?? "",
+        owner_alert_phone = user.owner_alert_phone ?? "",
         fast2sms_api_key = "",
       } = req.body || {};
 
@@ -77,7 +77,7 @@ module.exports = async (req, res) => {
         history: [{ direction: "incoming", body: String(message) }],
         assetKits: kits,
       });
-      if (!result) return res.status(400).json({ error: "Gemini did not return a valid response. Check your API key." });
+      if (!result) return res.status(400).json({ error: "Gemini did not return a valid response. Try again or check the Gemini deployment logs." });
       return res.status(200).json({ result });
     }
 

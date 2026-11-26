@@ -405,8 +405,14 @@
               <button type="button" data-preset="creator" class="preset-chip px-2 py-1 rounded-full bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-[11px]">Creator / Social Media</button>
             </div>
             <textarea id="ai-prompt" name="ai_system_prompt" rows="4" placeholder="Click a preset above or ✨ AI Suggest Script..." class="w-full px-3 py-2 rounded-lg border border-slate-300 text-xs"></textarea>
+            <p id="ai-script-status" class="text-xs text-slate-600" aria-live="polite"></p>
           </div>
 
+          <p id="ai-readiness" class="text-xs text-slate-600" aria-live="polite"></p>
+          <label class="block text-xs font-medium text-slate-700">
+            Test customer message
+            <input id="ai-test-message" type="text" maxlength="2000" placeholder="e.g. AppX kaise kaam karta hai?" class="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2" />
+          </label>
           <div class="flex gap-2">
             <button type="submit" class="flex-1 py-2.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-medium text-xs transition">Save AI Agent Settings</button>
             <button type="button" id="btn-ai-test-run" class="px-4 py-2.5 rounded-lg bg-slate-900 hover:bg-slate-800 text-white font-medium text-xs transition">Test AI Reply</button>
@@ -711,6 +717,33 @@
       document.getElementById("auth-screen").classList.remove("hidden");
     }
 
+    let aiSettingsRevision = 0;
+    let aiDraft = null;
+
+    function syncAiScript(user) {
+      const key = "appx-ai-script-draft:" + user.id;
+      if (aiDraft?.key !== key) {
+        aiDraft = { key, value: null };
+        try { aiDraft.value = localStorage.getItem(key); } catch {}
+      }
+      const saved = user.ai_system_prompt || "";
+      const status = document.getElementById("ai-script-status");
+      document.getElementById("ai-prompt").value = aiDraft.value ?? saved;
+      status.textContent = aiDraft.value !== null && aiDraft.value !== saved
+        ? "Unsaved draft on this device. Save to use it in WhatsApp replies."
+        : saved ? "Saved for Gemini replies." : "No custom script saved yet.";
+    }
+
+    function updateAiDraft(value) {
+      if (!aiDraft) return;
+      aiDraft.value = value;
+      try {
+        if (value === null) localStorage.removeItem(aiDraft.key);
+        else localStorage.setItem(aiDraft.key, value);
+      } catch {}
+      syncAiScript(state.user);
+    }
+
     function syncUserHeader() {
       if (!state.user) return;
       document.getElementById("auth-screen").classList.add("hidden");
@@ -726,7 +759,12 @@
       document.getElementById("ai-enabled-toggle").checked = Boolean(state.user.ai_enabled);
       document.getElementById("ai-max-q").value = state.user.ai_max_questions ?? 0;
       document.getElementById("ai-alert-phone").value = state.user.owner_alert_phone || "";
-      document.getElementById("ai-prompt").value = state.user.ai_system_prompt || "";
+      syncAiScript(state.user);
+      document.getElementById("ai-readiness").textContent = !state.user.ai_configured
+        ? "Gemini API key missing on this deployment."
+        : !state.user.meta_configured ? "Connect WhatsApp to receive AI replies."
+        : state.user.ai_enabled ? "Auto-reply is enabled. Paused and opted-out chats are skipped."
+        : "Auto-reply is off. Turn it on and save to enable WhatsApp replies.";
       document.getElementById("nav-ai-dot").className = state.user.ai_enabled && state.user.ai_configured ? "w-1.5 h-1.5 rounded-full bg-emerald-400" : "w-1.5 h-1.5 rounded-full bg-slate-400";
 
       const dot = document.getElementById("meta-status-dot");
@@ -936,8 +974,9 @@
 
     async function refreshData() {
       const token = state.token;
+      const revision = aiSettingsRevision;
       const [{ user }, { leads, campaignSent }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1")]);
-      if (token !== state.token) return;
+      if (token !== state.token || revision !== aiSettingsRevision) return;
       document.getElementById("kpi-sent").textContent = campaignSent ?? "—";
       const previousUser = state.user;
       state.user = user; state.leads = leads || [];
@@ -953,7 +992,10 @@
     }
 
     async function loadAiAndKits() {
+      const revision = aiSettingsRevision;
+      const token = state.token;
       const { user, kits } = await apiFetch("/api/ai");
+      if (token !== state.token || revision !== aiSettingsRevision) return;
       state.user = user; state.kits = kits || [];
       syncUserHeader();
       const box = document.getElementById("asset-kits-list");
@@ -1737,27 +1779,31 @@ Regards,
         upsc: "Ask politely in Hinglish: 1) Are you teaching UPSC, GPSC, or State PCS? 2) Do you need test-series, live classes, and PDF notes in your branded app? 3) Would you like social media growth handling too? Then share the UPSC/GPSC brochure & voucher and ask for a demo slot.",
         creator: "Ask politely in Hinglish: 1) What niche/skill do you teach? 2) How many followers do you have on Instagram/YouTube? 3) Do you want a complete branded app + social media marketing package? Then send the creator kit and ask for a demo time."
       };
+      document.getElementById("ai-prompt").addEventListener("input", e => updateAiDraft(e.target.value));
       document.getElementById("ai-preset-chips").addEventListener("click", e => {
         const b = e.target.closest(".preset-chip"); if (!b) return;
-        document.getElementById("ai-prompt").value = AI_PRESETS[b.dataset.preset] || "";
+        updateAiDraft(AI_PRESETS[b.dataset.preset] || "");
         showToast("Preset script loaded — click Save!");
       });
       document.getElementById("btn-ai-suggest").addEventListener("click", async () => {
         const btn = document.getElementById("btn-ai-suggest");
         btn.disabled = true; btn.textContent = "Generating...";
         try {
-          const res = await apiFetch("/api/ai?action=suggest", { method: "POST", body: JSON.stringify({ goal: document.getElementById("ai-prompt").value || "AppX branded app and social media marketing for Indian educators" }) });
-          document.getElementById("ai-prompt").value = res.suggested_prompt;
+          const draft = aiDraft;
+          const script = document.getElementById("ai-prompt").value;
+          const res = await apiFetch("/api/ai?action=suggest", { method: "POST", body: JSON.stringify({ goal: script || "AppX branded app and social media marketing for Indian educators" }) });
+          if (draft !== aiDraft || !state.user || document.getElementById("ai-prompt").value !== script) return;
+          updateAiDraft(res.suggested_prompt);
           showToast("AI suggested a tailored script!");
         } catch (err) { showToast(err.message); }
         finally { btn.disabled = false; btn.textContent = "✨ AI Suggest Script"; }
       });
       document.getElementById("btn-ai-test-run").addEventListener("click", async () => {
         const out = document.getElementById("ai-test-output");
-        out.classList.remove("hidden"); out.textContent = "Testing Gemini AI...";
+        out.classList.remove("hidden"); out.textContent = "Testing Gemini with your saved script...";
         try {
           const res = await apiFetch("/api/ai?action=test", { method: "POST", body: JSON.stringify({ message: "Haan ji interested hoon, main Physics padhata hoon aur 5000 YouTube subscribers hain" }) });
-          out.innerHTML = `<div><strong>AI Reply:</strong> ${escapeHtml(res.result.reply || "No separate reply")}</div><div><strong>Detected Category:</strong> ${escapeHtml(res.result.detected_category || "None")} | <strong>Send Assets:</strong> ${res.result.send_assets ? "YES" : "Not yet"} | <strong>Demo Handoff:</strong> ${res.result.demo_booked ? "YES" : "No"}</div>`;
+          out.innerHTML = `<div><strong>AI Reply:</strong> ${escapeHtml(res.result.reply || "No separate reply")}</div><div><strong>Detected Category:</strong> ${escapeHtml(res.result.detected_category || "None")} | <strong>Send Assets:</strong> ${res.result.send_assets ? "YES" : "Not yet"} | <strong>Demo Handoff:</strong> ${(res.result.demo_requested || res.result.demo_booked) ? "YES" : "No"}</div>`;
         } catch (err) { out.textContent = err.message; }
       });
 
@@ -1765,10 +1811,20 @@ Regards,
         e.preventDefault();
         const fd = Object.fromEntries(new FormData(e.target).entries());
         fd.ai_enabled = document.getElementById("ai-enabled-toggle").checked;
+        const token = state.token;
+        const submit = e.target.querySelector('button[type="submit"]');
+        if (submit.disabled) return;
+        submit.disabled = true;
         try {
           const res = await apiFetch("/api/ai", { method: "PUT", body: JSON.stringify(fd) });
-          state.user = res.user; syncUserHeader(); showToast("AI Sales Agent settings saved!");
+          if (token !== state.token) return;
+          aiSettingsRevision++;
+          state.user = res.user;
+          if (document.getElementById("ai-prompt").value === fd.ai_system_prompt) updateAiDraft(null);
+          syncUserHeader();
+          showToast("AI Sales Agent settings saved!");
         } catch (err) { showToast(err.message); }
+        finally { submit.disabled = false; }
       });
 
       document.getElementById("form-add-kit").addEventListener("submit", async e => {
