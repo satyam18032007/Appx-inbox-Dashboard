@@ -77,13 +77,22 @@ module.exports = async (req, res) => {
         const name = String(r.name || r.full_name || `+${phone}`).trim();
         const business = String(r.business_name || r.business || r.academy || "your institute").trim();
 
-        const { data: existing } = await sb
+        const { data: existing, error: lookupError } = await sb
           .from("leads")
-          .select("id")
+          .select("id, reply_type")
           .eq("user_id", user.id)
           .eq("phone", phone)
           .maybeSingle();
 
+        if (lookupError) {
+          failed++;
+          lastError = "Could not check contact opt-out status.";
+          continue;
+        }
+        if (existing?.reply_type === "Opted out") {
+          skipped++;
+          continue;
+        }
         let leadId = existing ? existing.id : null;
         if (!leadId) {
           const { data: inserted, error: iErr } = await sb

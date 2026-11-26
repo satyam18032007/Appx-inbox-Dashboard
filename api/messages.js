@@ -68,6 +68,10 @@ module.exports = async (req, res) => {
         return res.status(200).json({ control_taken: true, request_id: result.request_id });
       }
 
+      if (lead.reply_type === "Opted out") {
+        return res.status(409).json({ error: "This contact opted out of WhatsApp messages." });
+      }
+
       const lastIncoming = Date.parse(lead.last_incoming_at);
       const now = Date.now();
       if (["reply", "voice"].includes(mode) && !(lastIncoming <= now && now - lastIncoming < 86400000)) {

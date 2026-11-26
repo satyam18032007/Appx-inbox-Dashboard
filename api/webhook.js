@@ -3,7 +3,7 @@ const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, 
 
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
-  if (["stop", "unsubscribe", "opt out", "opt-out"].some((k) => lower.includes(k))) {
+  if (/^(?:please\s+)?(?:stop(?:\s+(?:sending (?:me )?messages|messaging me|contacting me))?|unsubscribe(?: me)?|opt[ -]out)[\s.!?]*$/i.test(lower.trim())) {
     return { reply_type: "Opted out", auto_status: "Not Interested" };
   }
   if (["not interested", "nahi chahiye", "no thanks", "don't want"].some((k) => lower.includes(k))) {
@@ -158,29 +158,54 @@ module.exports = async (req, res) => {
             if (insertError?.code === "23505") continue;
             if (insertError) throw insertError;
 
+            const optedOut = reply_type === "Opted out";
+            let confirmOptOut = optedOut && !existing;
             if (existing) {
+              const alreadyOptedOut = existing.reply_type === "Opted out";
               const nextStatus = ["No Response", "Interested"].includes(existing.status) ? auto_status : existing.status;
-              const { data: updated, error: updateError } = await sb
+              const update = sb
                 .from("leads")
                 .update({
                   last_message: text,
                   last_incoming_at: nowIso,
                   has_responded: true,
-                  reply_type,
+                  ...(alreadyOptedOut ? {} : { reply_type, status: nextStatus }),
                   ticket_state: "Pending",
-                  status: nextStatus,
                   unread_count: (existing.unread_count || 0) + 1,
                   updated_at: nowIso,
                 })
                 .eq("id", existing.id)
-                .eq("user_id", userId)
-                .select("*")
-                .single();
+                .eq("user_id", userId);
+              const guardedUpdate = alreadyOptedOut
+                ? update.eq("reply_type", "Opted out")
+                : update.or("reply_type.is.null,reply_type.neq.Opted out");
+              const { data: updated, error: updateError } = await guardedUpdate.select("*").maybeSingle();
+              confirmOptOut = optedOut && !alreadyOptedOut && Boolean(updated);
               if (updateError) console.error("WhatsApp lead update failed:", updateError.code);
               lead = updated || existing;
             }
 
             processed++;
+
+            if (confirmOptOut) {
+              const confirmation = "Okay, you've been unsubscribed. We won't send you any more WhatsApp messages. Thank you.";
+              try {
+                const confirmationId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: confirmation, mode: "reply" });
+                const { error: recordError } = await sb.from("messages").insert({
+                  user_id: userId,
+                  lead_id: lead.id,
+                  direction: "outgoing",
+                  body: confirmation,
+                  wa_message_id: confirmationId,
+                  delivery_status: "Sent",
+                });
+                if (recordError) throw recordError;
+              } catch (error) {
+                console.error("WhatsApp opt-out confirmation failed:", waId, error.message);
+              }
+            }
+
+            if (optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
 
             // === AI SALES QUALIFIER AGENT (Gemini + Category Assets + Owner Demo Alert) ===
             if (user.ai_enabled && getGeminiApiKey() && !lead.ai_paused && reply_type !== "Opted out" && reply_type !== "Not interested") {
