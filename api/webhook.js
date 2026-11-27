@@ -1,6 +1,10 @@
 const crypto = require("node:crypto");
 const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, COACHING_TEST_MARKER, COACHING_TEST_USED, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
+function isAutomatedReply(text) {
+  return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you)/iu.test(text);
+}
+
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
   if (/^(?:please\s+)?(?:stop(?:\s+(?:sending (?:me )?messages|messaging me|contacting me))?|unsubscribe(?: me)?|opt[ -]out)[\s.!?]*$/i.test(lower.trim())) {
@@ -136,7 +140,10 @@ module.exports = async (req, res) => {
             if (lookupError) throw lookupError;
             if (duplicate) continue;
 
-            const { reply_type, auto_status } = classifyReply(text);
+            const automated = mtype === "text" && isAutomatedReply(text);
+            const { reply_type, auto_status } = automated
+              ? { reply_type: "No response", auto_status: "No Response" }
+              : classifyReply(text);
             const senderName = contactsMap[msg.from] || contactsMap[fromPhone] || `+${fromPhone}`;
 
             const { data: existing, error: leadLookupError } = await sb
@@ -160,7 +167,7 @@ module.exports = async (req, res) => {
                   reply_type,
                   ticket_state: "Pending",
                   status: auto_status,
-                  has_responded: true,
+                  has_responded: !automated,
                   followup_date: today,
                   last_message: text,
                   last_incoming_at: nowIso,
@@ -197,8 +204,8 @@ module.exports = async (req, res) => {
                 .update({
                   last_message: text,
                   last_incoming_at: nowIso,
-                  has_responded: true,
-                  ...(alreadyOptedOut ? {} : { reply_type, status: nextStatus }),
+                  ...(automated ? {} : { has_responded: true }),
+                  ...(alreadyOptedOut || automated ? {} : { reply_type, status: nextStatus }),
                   ticket_state: "Pending",
                   unread_count: (existing.unread_count || 0) + 1,
                   updated_at: nowIso,
@@ -234,7 +241,7 @@ module.exports = async (req, res) => {
               }
             }
 
-            if (optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
+            if (automated || optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
 
             const answer = text.trim().toLowerCase().replace(/[.!]+$/, "");
             const buttonReply = ["button", "interactive"].includes(mtype);
