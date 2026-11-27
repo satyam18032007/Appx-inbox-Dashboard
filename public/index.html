@@ -531,6 +531,10 @@
           </div>
           <div id="bulk-template-values" class="grid grid-cols-2 gap-2"></div>
         </div>
+        <div id="bulk-progress-panel" class="hidden space-y-2">
+          <progress id="bulk-progress" aria-label="Bulk campaign rows processed" class="w-full"></progress>
+          <p id="bulk-progress-status" aria-live="polite"></p>
+        </div>
         <div class="flex justify-end gap-2 pt-2">
           <button type="button" data-close-modal="modal-bulk-import" class="px-4 py-2 rounded-lg border border-slate-300 text-slate-700">Cancel</button>
           <button type="submit" class="px-4 py-2 rounded-lg bg-indigo-600 text-white font-medium">Import &amp; Run</button>
@@ -1817,10 +1821,7 @@ Regards,
         try {
           const rows = parseCsvText(await fd.get("file").text());
           if (!rows.length) { showToast("CSV has no rows"); return; }
-          const res = await apiFetch("/api/leads?action=bulk", {
-            method: "POST",
-            body: JSON.stringify({
-              rows,
+          const settings = {
               campaign_name: fd.get("campaign_name") || "appx (Marketing)",
               send_template: Boolean(fd.get("send_template")),
               scheduled_at: fd.get("send_template") && fd.get("scheduled_at") ? new Date(fd.get("scheduled_at")).toISOString() : "",
@@ -1830,8 +1831,44 @@ Regards,
               ...(fd.get("send_template")
                 ? await readTemplateValues("bulk-template-select", fd.get("template_name"), fd.get("template_lang") || "en")
                 : {})
-            })
+          };
+          const sendRows = batch => apiFetch("/api/leads?action=bulk", {
+            method: "POST", body: JSON.stringify({ ...settings, rows: batch })
           });
+          const panel = document.getElementById("bulk-progress-panel");
+          const progress = document.getElementById("bulk-progress");
+          const status = document.getElementById("bulk-progress-status");
+          panel.classList.add("hidden");
+          let res;
+          if (settings.send_template && !settings.scheduled_at) {
+            panel.classList.remove("hidden");
+            progress.max = rows.length;
+            progress.value = 0;
+            let accepted = 0;
+            let failed = 0;
+            let other = 0;
+            for (let offset = 0; offset < rows.length; offset += 10) {
+              const batch = rows.slice(offset, offset + 10);
+              status.textContent = `Accepted by WhatsApp: ${accepted} · Failed: ${failed} · Other: ${other} · Remaining to process: ${rows.length - offset}`;
+              try {
+                res = await sendRows(batch);
+              } catch (error) {
+                status.textContent = `Accepted: ${accepted} · Failed: ${failed} · Other: ${other} · Unconfirmed batch: ${batch.length} · Unattempted: ${rows.length - offset - batch.length}. ${error.message}. Review before retrying.`;
+                return;
+              }
+              accepted += res.sent || 0;
+              failed += res.failed || 0;
+              other += batch.length - (res.sent || 0) - (res.failed || 0);
+              progress.value = offset + batch.length;
+            }
+            status.textContent = `Processed ${rows.length}/${rows.length} · Accepted by WhatsApp: ${accepted} · Failed: ${failed} · Other: ${other} · Remaining: 0`;
+            e.target.reset();
+            renderTemplateValues(document.getElementById("bulk-template-select"));
+            document.getElementById("bulk-tpl-fields").classList.add("hidden");
+            await refreshData();
+            return;
+          }
+          res = await sendRows(rows);
           e.target.reset();
           renderTemplateValues(document.getElementById("bulk-template-select"));
           document.getElementById("bulk-tpl-fields").classList.add("hidden");
