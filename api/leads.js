@@ -149,6 +149,7 @@ async function runBulkCampaign(sb, user, payload, res) {
     campaign_name = "appx (Marketing)",
     send_template = false,
     coaching_follow_up = false,
+    automatic_follow_up_templates = [],
     template_name = "",
     template_lang = "en",
     template_params,
@@ -168,6 +169,26 @@ async function runBulkCampaign(sb, user, payload, res) {
   const approvedTemplate = send_template
     ? await getApprovedWhatsAppTemplate(user, template_name, template_lang)
     : null;
+  const followUps = [];
+  if (!Array.isArray(automatic_follow_up_templates) || ![0, 2].includes(automatic_follow_up_templates.length)) {
+    return res.status(400).json({ error: "Enter two approved follow-up template names." });
+  }
+  if (automatic_follow_up_templates.length) {
+    if (!send_template || coaching_follow_up ||
+        automatic_follow_up_templates.some(name => typeof name !== "string" || !/^[a-z0-9_]+$/.test(name)) ||
+        new Set([template_name, ...automatic_follow_up_templates]).size !== 3) {
+      return res.status(400).json({ error: "Choose three distinct templates and one follow-up mode." });
+    }
+    try {
+      for (const name of automatic_follow_up_templates) {
+        const template = await getApprovedWhatsAppTemplate(user, name, template_lang);
+        if (template.header_format) throw new Error("Follow-up templates must use a fixed text body with no header.");
+        followUps.push({ name, body: formatSentTemplate(template, []) });
+      }
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
   let templateButtons = [];
   if (coaching_follow_up === true) {
     const replies = approvedTemplate?.quick_replies || [];
@@ -218,6 +239,8 @@ async function runBulkCampaign(sb, user, payload, res) {
   let sent = 0;
   let failed = 0;
   let lastError = "";
+  let followUpSent = 0;
+  let followUpFailed = 0;
 
   for (const r of rows) {
     const phone = normalizePhone(r.phone || r.whatsapp || r.mobile || r.number);
@@ -306,6 +329,34 @@ async function runBulkCampaign(sb, user, payload, res) {
           console.error("Bulk message accepted by Meta but could not be recorded:", waId, recordError.code);
           lastError = "A sent message could not be recorded in AppX.";
         }
+        if (followUps.length) {
+          let accepted = 0;
+          try {
+            for (const followUp of followUps) {
+              const { data: contact, error: contactError } = await sb.from("leads").select("reply_type")
+                .eq("user_id", user.id).eq("id", leadId).maybeSingle();
+              if (contactError || !contact || contact.reply_type === "Opted out") {
+                throw new Error("Follow-up stopped because contact eligibility could not be confirmed.");
+              }
+              const id = await sendMetaWhatsApp({
+                user, toPhone: phone, mode: "template", templateName: followUp.name, templateLang: template_lang,
+              });
+              accepted++;
+              followUpSent++;
+              const { error } = await sb.from("messages").insert({
+                user_id: user.id, lead_id: leadId, direction: "outgoing",
+                body: followUp.body, wa_message_id: id, delivery_status: "Sent",
+              });
+              if (error) throw error;
+            }
+            const { error } = await sb.from("leads").update({ ai_stage: "awaiting_coaching_subject" })
+              .eq("user_id", user.id).eq("id", leadId).neq("reply_type", "Opted out");
+            if (error) throw error;
+          } catch (error) {
+            followUpFailed += followUps.length - accepted;
+            lastError = error.message;
+          }
+        }
       } catch (e) {
         failed++;
         lastError = e.message;
@@ -314,7 +365,7 @@ async function runBulkCampaign(sb, user, payload, res) {
     }
   }
 
-  return res.status(200).json({ added, skipped, sent, failed, lastError });
+  return res.status(200).json({ added, skipped, sent, failed, followUpSent, followUpFailed, lastError });
 }
 
 async function runScheduledCampaign(sb, req, res) {
