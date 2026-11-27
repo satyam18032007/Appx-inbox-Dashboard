@@ -317,16 +317,24 @@ module.exports = async (req, res) => {
                   ? matchAutomatedBrochureCategory(assetKits, text)
                   : mtype === "text" && lead.ai_stage === "awaiting_coaching_subject" && !lead.assets_sent
                     ? matchCoachingSubject(assetKits, text) : "";
-                if (automated && !directCategory) continue;
-                const aiOut = directCategory
+                const automatedIntro = automated && !directCategory;
+                if (automatedIntro && lead.ai_auto_intro_sent) continue;
+                let aiOut = directCategory
                   ? { detected_category: directCategory, send_assets: true }
                   : await runGeminiSalesAgent({
-                    user, lead, assetKits, audioMedia, latestMessage: text,
+                    user, lead, assetKits, audioMedia, latestMessage: text, automatedIntro,
                     history: (() => {
                       const subjectQuestion = history.findIndex(entry => entry.direction === "outgoing" && entry.body === CAMPAIGN_SUBJECT_QUESTION);
                       return (subjectQuestion >= 0 ? history.slice(0, subjectQuestion + 1) : history.slice()).reverse();
                     })(),
+                  }).catch(error => {
+                    if (!automatedIntro) throw error;
+                    console.error("Automated introduction generation failed:", waId, error.message);
+                    return null;
                   });
+                if (automatedIntro) {
+                  aiOut = { reply: aiOut?.reply || "Thanks for sharing what you do. AppX helps educators run courses through their own branded app and website. Would you like to see how it could work for your business?" };
+                }
                 if (!aiOut) throw new Error("Gemini returned no usable sales decision");
                 console.info("AI agent decision", { messageId: waId, reply: Boolean(aiOut.reply), assets: aiOut.send_assets, demo: aiOut.demo_booked });
                 if (aiOut) {
@@ -359,7 +367,22 @@ module.exports = async (req, res) => {
                       : "What date and time would work best for your demo?";
                   }
                   if (reply) {
-                    const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });
+                    if (automatedIntro) {
+                      const { data: claim, error } = await sb.from("leads").update({ ai_auto_intro_sent: true })
+                        .eq("id", lead.id).eq("user_id", userId).eq("ai_auto_intro_sent", false)
+                        .neq("reply_type", "Opted out").neq("reply_type", "Not interested").select("id").maybeSingle();
+                      if (error) throw error;
+                      if (!claim) continue;
+                    }
+                    let replyWaId;
+                    try {
+                      replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });
+                    } catch (error) {
+                      if (automatedIntro && error.metaCode) {
+                        await sb.from("leads").update({ ai_auto_intro_sent: false }).eq("id", lead.id).eq("user_id", userId);
+                      }
+                      throw error;
+                    }
                     await sb.from("messages").insert({
                       user_id: userId,
                       lead_id: lead.id,

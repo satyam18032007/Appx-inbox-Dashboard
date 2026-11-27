@@ -66,6 +66,7 @@ create table if not exists public.leads (
 );
 
 alter table public.leads add column if not exists ai_paused boolean default false;
+alter table public.leads add column if not exists ai_auto_intro_sent boolean not null default false;
 alter table public.leads add column if not exists ai_stage text default 'qualifying';
 alter table public.leads add column if not exists ai_questions_asked integer default 0;
 alter table public.leads add column if not exists detected_category text default '';

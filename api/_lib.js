@@ -519,7 +519,7 @@ function matchCoachingSubject(kits, message) {
     ? categories.values().next().value : "";
 }
 
-async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia = null, latestMessage = "" }) {
+async function runGeminiSalesAgent({ user, lead, history, assetKits, audioMedia = null, latestMessage = "", automatedIntro = false }) {
   const apiKey = getGeminiApiKey();
   if (!apiKey) return null;
 
@@ -568,7 +568,10 @@ Return STRICT JSON ONLY:
     .map((m) => `${m.direction === "incoming" ? "Customer" : "Agent"}: ${m.body}`)
     .join("\n");
 
-  const parts = [{ text: `Conversation so far with ${lead.name}:\n${convoText}\n\nCurrent customer message to handle: ${latestMessage || "(use the latest customer turn above)"}\n\nRespond with STRICT JSON:` }];
+  const turnInstruction = automatedIntro
+    ? "The latest turn is an automated business greeting with no suitable brochure. Write one short introductory reply tailored to an explicitly stated business activity, then ask whether they would like to see how AppX could help. Do not assume interest, a demo request, or any business details. Return a nonempty reply and false for send_assets, demo_requested, demo_booked and asked_a_question."
+    : "";
+  const parts = [{ text: `Conversation so far with ${lead.name}:\n${convoText}\n\nCurrent customer message to handle: ${latestMessage || "(use the latest customer turn above)"}\n\n${turnInstruction}\nRespond with STRICT JSON:` }];
   if (audioMedia && audioMedia.base64) {
     parts.push({
       inlineData: {
