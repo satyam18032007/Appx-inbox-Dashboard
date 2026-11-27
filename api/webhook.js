@@ -5,6 +5,19 @@ function isAutomatedReply(text) {
   return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you)/iu.test(text);
 }
 
+function matchAutomatedBrochureCategory(kits, text) {
+  const words = value => String(value || "").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim();
+  const message = ` ${words(text)} `;
+  const categories = new Map();
+  for (const kit of kits) {
+    if (!kit.asset_url && !kit.message_text) continue;
+    const matches = String(kit.keywords || "").split(",").map(words)
+      .some(keyword => keyword && message.includes(` ${keyword} `));
+    if (matches) categories.set(kit.category_name.toLowerCase(), kit.category_name);
+  }
+  return categories.size === 1 ? categories.values().next().value : "";
+}
+
 function classifyReply(text) {
   const lower = String(text || "").toLowerCase();
   if (/^(?:please\s+)?(?:stop(?:\s+(?:sending (?:me )?messages|messaging me|contacting me))?|unsubscribe(?: me)?|opt[ -]out)[\s.!?]*$/i.test(lower.trim())) {
@@ -241,7 +254,7 @@ module.exports = async (req, res) => {
               }
             }
 
-            if (automated || optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
+            if ((automated && (!existing || lead.assets_sent || lead.reply_type === "Not interested")) || optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
 
             const answer = text.trim().toLowerCase().replace(/[.!]+$/, "");
             const buttonReply = ["button", "interactive"].includes(mtype);
@@ -300,8 +313,11 @@ module.exports = async (req, res) => {
 
                 if (historyError || kitsError) throw new Error("AI context lookup failed");
                 const audioMedia = audioId ? await downloadMetaMediaBase64(user, audioId) : null;
-                const directCategory = mtype === "text" && lead.ai_stage === "awaiting_coaching_subject" && !lead.assets_sent
-                  ? matchCoachingSubject(assetKits, text) : "";
+                const directCategory = automated
+                  ? matchAutomatedBrochureCategory(assetKits, text)
+                  : mtype === "text" && lead.ai_stage === "awaiting_coaching_subject" && !lead.assets_sent
+                    ? matchCoachingSubject(assetKits, text) : "";
+                if (automated && !directCategory) continue;
                 const aiOut = directCategory
                   ? { detected_category: directCategory, send_assets: true }
                   : await runGeminiSalesAgent({
@@ -410,7 +426,7 @@ module.exports = async (req, res) => {
                           });
                           leadUpdates.last_message = assetBody;
                           leadUpdates.assets_sent = true;
-                          if (!["demo_requested", "demo_booked"].includes(lead.ai_stage)) leadUpdates.ai_stage = "awaiting_demo_time";
+                          if (!automated && !["demo_requested", "demo_booked"].includes(lead.ai_stage)) leadUpdates.ai_stage = "awaiting_demo_time";
                         } catch (error) {
                           if (!assetWaId) {
                             const { error: releaseError } = await sb.from("leads").update({ assets_sent: false })
