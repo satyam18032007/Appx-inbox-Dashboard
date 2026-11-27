@@ -192,8 +192,8 @@ async function runBulkCampaign(sb, user, payload, res) {
   let templateButtons = [];
   if (coaching_follow_up === true) {
     const replies = approvedTemplate?.quick_replies || [];
-    if (!replies.some(button => String(button.text).trim().toLowerCase() === "yes")) {
-      return res.status(400).json({ error: "Select an approved template with a YES quick-reply button for the coaching follow-up." });
+    if (!replies.some(button => /^(yes|interested|yes[, ]+interested)$/.test(String(button.text).trim().toLowerCase()))) {
+      return res.status(400).json({ error: "Select an approved template with a YES or Interested quick-reply button for the coaching follow-up." });
     }
     if (!user.ai_enabled || !getGeminiApiKey() || !normalizePhone(user.owner_alert_phone || "")) {
       return res.status(400).json({ error: "In AI Agent settings, enable AI replies and save your alert phone before starting this campaign." });

@@ -516,15 +516,9 @@
             <span class="block text-slate-600">Leave blank to send now. Scheduled campaigns support up to 50 rows, up to 7 days ahead.</span>
           </label>
           <label class="flex items-start gap-2">
-            <input type="checkbox" name="coaching_follow_up" class="mt-0.5 rounded border-slate-300" />
-            <span>On YES, send AppX features and ask what they teach. The AI agent can then send a matching brochure and flag demo requests.</span>
+            <input type="checkbox" name="coaching_follow_up" checked class="mt-0.5 rounded border-slate-300" />
+            <span>On YES or Interested, send AppX features and ask what they teach. The AI agent can then send a matching brochure and flag demo requests.</span>
           </label>
-          <fieldset class="space-y-1">
-            <legend>Automatic follow-ups without YES (optional)</legend>
-            <input name="features_template" placeholder="Approved features template name" class="w-full rounded border border-slate-300 p-2" />
-            <input name="subject_template" placeholder="Approved subject question template name" class="w-full rounded border border-slate-300 p-2" />
-            <p>Enter both names in the same language as the first template. Use contacts opted in to WhatsApp messages.</p>
-          </fieldset>
           <div class="flex items-center gap-2">
             <select id="bulk-template-select" class="flex-1 px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white">
               <option value="">Select approved Meta template...</option>
@@ -1827,16 +1821,11 @@ Regards,
         try {
           const rows = parseCsvText(await fd.get("file").text());
           if (!rows.length) { showToast("CSV has no rows"); return; }
-          const automaticTemplates = [fd.get("features_template"), fd.get("subject_template")].map(value => value.trim());
-          if (fd.get("send_template") && automaticTemplates.some(Boolean) && (!automaticTemplates.every(Boolean) || fd.get("coaching_follow_up"))) {
-            throw new Error("Enter both approved follow-up names and clear the On YES option.");
-          }
           const settings = {
               campaign_name: fd.get("campaign_name") || "appx (Marketing)",
               send_template: Boolean(fd.get("send_template")),
               scheduled_at: fd.get("send_template") && fd.get("scheduled_at") ? new Date(fd.get("scheduled_at")).toISOString() : "",
               coaching_follow_up: Boolean(fd.get("send_template") && fd.get("coaching_follow_up")),
-              automatic_follow_up_templates: fd.get("send_template") && automaticTemplates.every(Boolean) ? automaticTemplates : [],
               template_name: fd.get("template_name") || "",
               template_lang: fd.get("template_lang") || "en",
               ...(fd.get("send_template")

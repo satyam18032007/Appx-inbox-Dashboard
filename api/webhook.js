@@ -236,21 +236,28 @@ module.exports = async (req, res) => {
 
             if (optedOut || lead.reply_type === "Opted out" || (existing && lead === existing)) continue;
 
-            const quickReply = ["button", "interactive"].includes(mtype) ? text.trim().toLowerCase() : "";
-            if (msg.context?.id && ["yes", "no"].includes(quickReply)) {
+            const answer = text.trim().toLowerCase().replace(/[.!]+$/, "");
+            const buttonReply = ["button", "interactive"].includes(mtype);
+            const interested = (buttonReply || mtype === "text") &&
+              /^(yes|yes[, ]+interested|interested|i['’]?m interested|i am interested|haan|ha|हाँ|हां)$/.test(answer);
+            const decline = buttonReply && msg.context?.id && answer === "no";
+            if (interested || decline) {
               try {
-                const { data: campaign, error } = await sb.from("messages").select("body")
-                  .eq("user_id", user.id).eq("lead_id", lead.id).eq("direction", "outgoing")
-                  .eq("wa_message_id", msg.context.id).limit(1).maybeSingle();
+                const outgoing = sb.from("messages").select("body, wa_message_id")
+                  .eq("user_id", user.id).eq("lead_id", lead.id).eq("direction", "outgoing");
+                const lookup = msg.context?.id
+                  ? outgoing.eq("wa_message_id", msg.context.id)
+                  : outgoing.like("body", "[Template:%").order("created_at", { ascending: false }).order("id", { ascending: false });
+                const { data: campaign, error } = await lookup.limit(1).maybeSingle();
                 if (error) throw error;
                 if (campaign?.body?.endsWith(COACHING_TEST_USED)) continue;
                 const freshTest = campaign?.body?.endsWith(COACHING_TEST_MARKER);
                 if (freshTest || campaign?.body?.endsWith(CAMPAIGN_FOLLOW_UP_MARKER)) {
-                  if (quickReply === "yes" && user.ai_enabled && !lead.ai_paused) {
+                  if (interested && user.ai_enabled && !lead.ai_paused) {
                     if (freshTest) {
                       const { data: testClaim, error: testError } = await sb.from("messages")
                         .update({ body: campaign.body.slice(0, -COACHING_TEST_MARKER.length) + COACHING_TEST_USED })
-                        .eq("user_id", user.id).eq("lead_id", lead.id).eq("wa_message_id", msg.context.id)
+                        .eq("user_id", user.id).eq("lead_id", lead.id).eq("wa_message_id", campaign.wa_message_id)
                         .eq("body", campaign.body).select("id").maybeSingle();
                       if (testError) throw testError;
                       if (!testClaim) continue;
@@ -262,7 +269,7 @@ module.exports = async (req, res) => {
                       lead = reset;
                     }
                     await sendCoachingFollowUp({ sb, user, lead, fromPhone });
-                  } else if (quickReply === "no") {
+                  } else if (decline) {
                     const { error: declineError } = await sb.from("leads")
                       .update({ reply_type: "Not interested" })
                       .eq("user_id", user.id).eq("id", lead.id).neq("reply_type", "Opted out");
