@@ -2,7 +2,7 @@ const crypto = require("node:crypto");
 const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, COACHING_TEST_MARKER, COACHING_TEST_USED, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
 function isAutomatedReply(text) {
-  return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you)/iu.test(text);
+  return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you|आपकी कैसे मदद कर सकती है)/iu.test(text);
 }
 
 function matchAutomatedBrochureCategory(kits, text) {
@@ -64,12 +64,69 @@ async function sendCoachingFollowUp({ sb, user, lead, fromPhone }) {
   }
 }
 
+async function sendAutomatedIntro(sb, user, lead, reply) {
+  const { data: claim, error } = await sb.from("leads").update({ ai_auto_intro_sent: true })
+    .eq("id", lead.id).eq("user_id", user.id).eq("ai_auto_intro_sent", false)
+    .neq("reply_type", "Opted out").neq("reply_type", "Not interested")
+    .or("ai_paused.is.null,ai_paused.eq.false").select("id").maybeSingle();
+  if (error) throw error;
+  if (!claim) return false;
+  let id;
+  try {
+    id = await sendMetaWhatsApp({ user, toPhone: lead.phone, text: reply, mode: "reply" });
+  } catch (error) {
+    if (error.metaCode) await sb.from("leads").update({ ai_auto_intro_sent: false }).eq("id", lead.id).eq("user_id", user.id);
+    throw error;
+  }
+  const { error: saveError } = await sb.from("messages").insert({
+    user_id: user.id, lead_id: lead.id, direction: "outgoing", body: reply, wa_message_id: id, delivery_status: "AI Sent",
+  });
+  if (saveError) throw saveError;
+  return true;
+}
+
+const AUTO_INTRO_FALLBACK = "Thanks for sharing what you do. AppX helps educators run courses through their own branded app and website. Would you like to see how it could work for your business?";
+
+async function sendPendingIntro(sb, req, res, userId) {
+  const token = req.headers["x-appx-scheduler"];
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token)) return res.status(401).json({ error: "Unauthorized." });
+  const { data: secret } = await sb.from("scheduled_bulk_worker_secret").select("token").eq("id", true).single();
+  if (!secret || !/^[a-f0-9]{64}$/.test(secret.token) ||
+      !crypto.timingSafeEqual(Buffer.from(token), Buffer.from(secret.token))) {
+    return res.status(401).json({ error: "Unauthorized." });
+  }
+  const messageId = String(req.query.message_id || "");
+  if (!/^\d+$/.test(messageId)) return res.status(400).json({ error: "Invalid message id." });
+  const { data: message, error } = await sb.from("messages").select("lead_id,body,created_at")
+    .eq("user_id", userId).eq("id", messageId).eq("direction", "incoming").maybeSingle();
+  if (error) throw error;
+  if (!message || !isAutomatedReply(message.body) || Date.now() - Date.parse(message.created_at) >= 86400000) {
+    return res.status(200).json({ sent: false });
+  }
+  const [{ data: user }, { data: lead }, { data: later, error: historyError }] = await Promise.all([
+    sb.from("users").select("*").eq("id", userId).single(),
+    sb.from("leads").select("*").eq("user_id", userId).eq("id", message.lead_id).single(),
+    sb.from("messages").select("id").eq("user_id", userId).eq("lead_id", message.lead_id)
+      .gte("created_at", message.created_at).neq("id", messageId).limit(1),
+  ]);
+  if (historyError) throw historyError;
+  if (!user?.ai_enabled || !lead || lead.ai_paused || lead.ai_auto_intro_sent || lead.assets_sent ||
+      ["Opted out", "Not interested"].includes(lead.reply_type) || later.length) return res.status(200).json({ sent: false });
+  const decision = await runGeminiSalesAgent({
+    user, lead, history: [], assetKits: [], latestMessage: message.body, automatedIntro: true,
+  }).catch(() => null);
+  const sent = await sendAutomatedIntro(sb, user, lead, decision?.reply || AUTO_INTRO_FALLBACK);
+  return res.status(200).json({ sent });
+}
+
 module.exports = async (req, res) => {
   try {
     const userId = String(req.query.user_id || "").trim();
     if (!userId) return res.status(400).send("Missing user_id");
 
     const sb = getSupabase();
+
+    if (req.method === "POST" && req.query.action === "pending_intro") return await sendPendingIntro(sb, req, res, userId);
 
     if (req.method === "GET") {
       const mode = req.query["hub.mode"];
@@ -333,7 +390,7 @@ module.exports = async (req, res) => {
                     return null;
                   });
                 if (automatedIntro) {
-                  aiOut = { reply: aiOut?.reply || "Thanks for sharing what you do. AppX helps educators run courses through their own branded app and website. Would you like to see how it could work for your business?" };
+                  aiOut = { reply: aiOut?.reply || AUTO_INTRO_FALLBACK };
                 }
                 if (!aiOut) throw new Error("Gemini returned no usable sales decision");
                 console.info("AI agent decision", { messageId: waId, reply: Boolean(aiOut.reply), assets: aiOut.send_assets, demo: aiOut.demo_booked });
@@ -368,21 +425,10 @@ module.exports = async (req, res) => {
                   }
                   if (reply) {
                     if (automatedIntro) {
-                      const { data: claim, error } = await sb.from("leads").update({ ai_auto_intro_sent: true })
-                        .eq("id", lead.id).eq("user_id", userId).eq("ai_auto_intro_sent", false)
-                        .neq("reply_type", "Opted out").neq("reply_type", "Not interested").select("id").maybeSingle();
-                      if (error) throw error;
-                      if (!claim) continue;
+                      await sendAutomatedIntro(sb, user, lead, reply);
+                      continue;
                     }
-                    let replyWaId;
-                    try {
-                      replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });
-                    } catch (error) {
-                      if (automatedIntro && error.metaCode) {
-                        await sb.from("leads").update({ ai_auto_intro_sent: false }).eq("id", lead.id).eq("user_id", userId);
-                      }
-                      throw error;
-                    }
+                    const replyWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: reply, mode: "reply" });
                     await sb.from("messages").insert({
                       user_id: userId,
                       lead_id: lead.id,
