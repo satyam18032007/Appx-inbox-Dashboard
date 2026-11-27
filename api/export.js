@@ -1,5 +1,5 @@
 const ExcelJS = require("exceljs");
-const { getSupabase, requireUser } = require("./_lib");
+const { getSupabase, requireUser, getCampaignDateLeads } = require("./_lib");
 
 module.exports = async (req, res) => {
   try {
@@ -8,14 +8,22 @@ module.exports = async (req, res) => {
     if (!user) return;
     const sb = getSupabase();
 
-    const { data: leads = [], error } = await sb
-      .from("leads")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("has_responded", { ascending: false })
-      .order("updated_at", { ascending: false });
-
-    if (error) throw error;
+    const sentDate = req.query.sent_date;
+    let leads;
+    if (sentDate !== undefined) {
+      const results = await getCampaignDateLeads(sb, user.id, sentDate);
+      if (!results) return res.status(400).json({ error: "Choose a valid campaign send date." });
+      leads = results.leads;
+    } else {
+      const { data, error } = await sb
+        .from("leads")
+        .select("*")
+        .eq("user_id", user.id)
+        .order("has_responded", { ascending: false })
+        .order("updated_at", { ascending: false });
+      if (error) throw error;
+      leads = data || [];
+    }
 
     const leadRows = leads.map((l) => ({
       ID: l.id,
@@ -23,6 +31,7 @@ module.exports = async (req, res) => {
       "WhatsApp Phone": `+${l.phone}`,
       "Business / Academy": l.business_name || "",
       Campaign: l.campaign_name || "",
+      ...(sentDate ? { "Campaign Send Date (IST)": sentDate } : {}),
       "Responded?": l.has_responded ? "Yes" : "No",
       "Reply Category": l.reply_type || "",
       "Sales Status": l.status || "",
@@ -60,7 +69,7 @@ module.exports = async (req, res) => {
     }
     const buf = Buffer.from(await wb.xlsx.writeBuffer());
     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
-    res.setHeader("Content-Disposition", `attachment; filename="appx_leads.xlsx"`);
+    res.setHeader("Content-Disposition", `attachment; filename="appx_leads${sentDate ? "_" + sentDate : ""}.xlsx"`);
     return res.status(200).send(buf);
   } catch (err) {
     return res.status(500).json({ error: err.message || "Export failed" });

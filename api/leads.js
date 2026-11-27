@@ -1,5 +1,5 @@
 const { timingSafeEqual } = require("node:crypto");
-const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, CAMPAIGN_FOLLOW_UP_MARKER, getGeminiApiKey } = require("./_lib");
+const { getSupabase, requireUser, normalizePhone, sendMetaWhatsApp, getApprovedWhatsAppTemplate, formatSentTemplate, resolveTemplateHeader, CAMPAIGN_FOLLOW_UP_MARKER, getGeminiApiKey, getCampaignDateLeads } = require("./_lib");
 
 const VALID_STATUSES = [
   "No Response",
@@ -22,6 +22,11 @@ module.exports = async (req, res) => {
     const sb = getSupabase();
 
     if (req.method === "GET") {
+      if (req.query.sent_date !== undefined) {
+        const results = await getCampaignDateLeads(sb, user.id, req.query.sent_date);
+        if (!results) return res.status(400).json({ error: "Choose a valid campaign send date." });
+        return res.status(200).json(results);
+      }
       const { data: leads, error } = await sb
         .from("leads")
         .select("*")

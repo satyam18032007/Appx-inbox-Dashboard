@@ -114,6 +114,11 @@
         <button id="btn-mobile-bulk" type="button" class="min-h-9 rounded-md bg-white/15 px-3 py-1.5 text-xs font-semibold text-white">Bulk CSV</button>
         <button id="btn-mobile-tpl" type="button" class="min-h-9 rounded-md bg-white/10 px-3 py-1.5 text-xs font-medium text-white">Templates</button>
       </div>
+      <div class="flex flex-wrap items-center gap-2 border-t border-white/10 px-3 py-2 text-xs">
+        <label for="campaign-send-date">Campaign send date (IST)</label>
+        <input id="campaign-send-date" type="date" class="rounded px-2 py-1 text-slate-900" />
+        <button id="clear-campaign-send-date" type="button" class="rounded bg-white/10 px-2 py-1">All dates</button>
+      </div>
     </header>
 
     <div id="setup-banner" class="hidden bg-amber-50 border-b border-amber-200 px-4 py-2 text-xs text-amber-900 flex flex-wrap items-center justify-between gap-2">
@@ -1015,7 +1020,10 @@
     async function refreshData() {
       const token = state.token;
       const revision = aiSettingsRevision;
-      const [{ user }, { leads, campaignSent }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1")]);
+      const sentDate = document.getElementById("campaign-send-date").value;
+      const dateQuery = sentDate ? "&sent_date=" + encodeURIComponent(sentDate) : "";
+      const [{ user }, { leads, campaignSent }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1" + dateQuery)]);
+      if (sentDate !== document.getElementById("campaign-send-date").value) return;
       if (token !== state.token || revision !== aiSettingsRevision) return;
       document.getElementById("kpi-sent").textContent = campaignSent ?? "—";
       const previousUser = state.user;
@@ -1661,7 +1669,16 @@ Regards,
       document.getElementById("btn-close-details").addEventListener("click", () => document.getElementById("details-drawer").classList.add("hidden"));
       document.querySelectorAll("[data-close-modal]").forEach(b => b.addEventListener("click", () => closeModal(b.dataset.closeModal)));
 
-      const downloadExcel = () => { window.location.href = "/api/export"; };
+      const campaignDate = document.getElementById("campaign-send-date");
+      const refreshCampaignDate = () => refreshData().catch(error => showToast(error.message));
+      campaignDate.addEventListener("change", refreshCampaignDate);
+      document.getElementById("clear-campaign-send-date").addEventListener("click", () => {
+        campaignDate.value = "";
+        refreshCampaignDate();
+      });
+      const downloadExcel = () => {
+        window.location.href = "/api/export" + (campaignDate.value ? "?sent_date=" + encodeURIComponent(campaignDate.value) : "");
+      };
       document.getElementById("btn-dash-export").addEventListener("click", downloadExcel);
       document.getElementById("btn-sheet-export").addEventListener("click", downloadExcel);
       document.getElementById("bulk-send-toggle").addEventListener("change", e => document.getElementById("bulk-tpl-fields").classList.toggle("hidden", !e.target.checked));

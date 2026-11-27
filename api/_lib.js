@@ -591,7 +591,40 @@ Return STRICT JSON ONLY:
   }
 }
 
+async function getCampaignDateLeads(sb, userId, date) {
+  if (typeof date !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const midnight = new Date(date + "T00:00:00.000Z");
+  if (!Number.isFinite(midnight.getTime()) || midnight.toISOString().slice(0, 10) !== date) return null;
+  // Campaign dates use India Standard Time.
+  const start = midnight.getTime() - 330 * 60000;
+  const ids = new Set();
+  let campaignSent = 0;
+  const pageSize = 500;
+  for (let offset = 0;; offset += pageSize) {
+    const { data, error } = await sb.from("messages").select("lead_id")
+      .eq("user_id", userId).eq("direction", "outgoing").like("body", "[Template: %")
+      .neq("wa_message_id", "").neq("delivery_status", "Failed")
+      .gte("created_at", new Date(start).toISOString()).lt("created_at", new Date(start + 86400000).toISOString())
+      .order("id").range(offset, offset + pageSize - 1);
+    if (error) throw error;
+    for (const row of data) ids.add(row.lead_id);
+    campaignSent += data.length;
+    if (data.length < pageSize) break;
+  }
+  const leadIds = [...ids];
+  const leads = [];
+  for (let offset = 0; offset < leadIds.length; offset += 100) {
+    const { data, error } = await sb.from("leads").select("*").eq("user_id", userId).in("id", leadIds.slice(offset, offset + 100));
+    if (error) throw error;
+    leads.push(...data);
+  }
+  leads.sort((a, b) => Number(Boolean(b.has_responded)) - Number(Boolean(a.has_responded))
+    || String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
+  return { leads, campaignSent };
+}
+
 module.exports = {
+  getCampaignDateLeads,
   getSupabase,
   hashPassword,
   verifyPassword,
