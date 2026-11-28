@@ -509,7 +509,15 @@
       <p class="text-xs text-slate-500">Upload CSV with columns <code>name, phone, business_name</code>.</p>
       <form id="form-bulk-import" class="space-y-3 text-xs">
         <div><label class="block font-medium text-slate-700 mb-1">Campaign Label</label><input name="campaign_name" value="appx (Marketing)" class="w-full px-3 py-2 rounded-lg border border-slate-300 text-sm" /></div>
-        <div><label class="block font-medium text-slate-700 mb-1">CSV File *</label><input type="file" name="file" accept=".csv" required class="w-full text-xs text-slate-600" /></div>
+        <label class="block space-y-1">
+          <span class="font-medium text-slate-700">Recipients</span>
+          <select name="recipient_mode" class="block w-full rounded-lg border border-slate-300 bg-white p-2">
+            <option value="csv">Upload CSV</option>
+            <option value="single">Enter one number</option>
+          </select>
+        </label>
+        <label id="bulk-csv-recipient" class="block space-y-1"><span class="font-medium text-slate-700">CSV File *</span><input type="file" name="file" accept=".csv" required class="block w-full text-xs text-slate-600" /></label>
+        <label id="bulk-single-recipient" class="hidden space-y-1"><span class="font-medium text-slate-700">WhatsApp number *</span><input name="single_phone" type="tel" autocomplete="tel" placeholder="+91 98765 43210" disabled class="block w-full rounded-lg border border-slate-300 p-2" /></label>
         <label class="flex items-center gap-2 pt-1 cursor-pointer">
           <input id="bulk-send-toggle" type="checkbox" name="send_template" class="rounded border-slate-300 text-indigo-600" />
           <span class="text-slate-700 font-medium">Send approved Meta Template</span>
@@ -1829,14 +1837,42 @@ Regards,
         await loadScheduledCampaigns();
       });
 
-      document.getElementById("form-bulk-import").addEventListener("submit", async e => {
+      const bulkForm = document.getElementById("form-bulk-import");
+      function updateBulkRecipientMode() {
+        const single = bulkForm.elements.recipient_mode.value === "single";
+        document.getElementById("bulk-csv-recipient").classList.toggle("hidden", single);
+        document.getElementById("bulk-csv-recipient").classList.toggle("block", !single);
+        document.getElementById("bulk-single-recipient").classList.toggle("hidden", !single);
+        document.getElementById("bulk-single-recipient").classList.toggle("block", single);
+        bulkForm.elements.file.disabled = single;
+        bulkForm.elements.single_phone.disabled = !single;
+        bulkForm.elements.single_phone.required = single;
+        bulkForm.querySelector('button[type="submit"]').textContent = single ? "Send template" : "Import & Run";
+      }
+      bulkForm.elements.recipient_mode.addEventListener("change", updateBulkRecipientMode);
+      updateBulkRecipientMode();
+      bulkForm.addEventListener("submit", async e => {
         e.preventDefault();
         const submit = e.target.querySelector('button[type="submit"]');
         if (submit.disabled) return;
         submit.disabled = true;
         const fd = new FormData(e.target);
         try {
-          const rows = parseCsvText(await fd.get("file").text());
+          let rows;
+          if (fd.get("recipient_mode") === "single") {
+            const phone = fd.get("single_phone").trim().replace(/[\s()-]/g, "");
+            if (!/^\+?[1-9]\d{9,14}$/.test(phone)) {
+              showToast("Enter a valid WhatsApp number, such as +91 98765 43210.");
+              return;
+            }
+            if (!fd.get("send_template") || !String(fd.get("template_name") || "").trim()) {
+              showToast("Enable template sending and select an approved Meta template.");
+              return;
+            }
+            rows = [{ phone }];
+          } else {
+            rows = parseCsvText(await fd.get("file").text());
+          }
           if (!rows.length) { showToast("CSV has no rows"); return; }
           const settings = {
               campaign_name: fd.get("campaign_name") || "appx (Marketing)",
@@ -1884,6 +1920,7 @@ Regards,
             }
             status.textContent = `Processed ${rows.length}/${rows.length} · Accepted by WhatsApp: ${accepted} · Failed: ${failed} · Other: ${other} · Follow-ups accepted: ${followUpSent} · Follow-ups stopped: ${followUpFailed} · Remaining: 0`;
             e.target.reset();
+            updateBulkRecipientMode();
             renderTemplateValues(document.getElementById("bulk-template-select"));
             document.getElementById("bulk-tpl-fields").classList.add("hidden");
             await refreshData();
@@ -1891,6 +1928,7 @@ Regards,
           }
           res = await sendRows(rows);
           e.target.reset();
+          updateBulkRecipientMode();
           renderTemplateValues(document.getElementById("bulk-template-select"));
           document.getElementById("bulk-tpl-fields").classList.add("hidden");
           if (res.scheduled) {
