@@ -5,12 +5,14 @@ function isAutomatedReply(text) {
   const messagingGreeting = /\bthank(?:s| you) for messaging\s+\p{L}/iu.test(text);
   const businessGreeting = /\b(?:will|['’]ll) reply (?:to you )?shortly\b|\bhere(?:['’]s| is) a little about us\b/iu.test(text);
   if (messagingGreeting && businessGreeting) return true;
+  if (/https?:\/\/\S+/i.test(text) && /\b(?:visit us|follow us|explore our (?:work|courses)|our (?:website|online courses))\b/i.test(text)) return true;
+  if (/\bthank(?:s| you) for your message\b/i.test(text) && /\b(?:unavailable right now|will respond as soon as possible)\b/i.test(text)) return true;
   return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you|आपकी कैसे मदद कर सकती है)/iu.test(text);
 }
 
 function matchAutomatedBrochureCategory(kits, text) {
   const words = value => String(value || "").toLowerCase().replace(/[^\p{L}\p{N}\p{M}]+/gu, " ").trim();
-  const message = ` ${words(text)} `;
+  const message = ` ${words(text.replace(/https?:\/\/\S+/gi, " "))} `;
   const categories = new Map();
   for (const kit of kits) {
     if (!kit.asset_url && !kit.message_text) continue;
@@ -88,7 +90,8 @@ async function sendAutomatedIntro(sb, user, lead, reply) {
   return true;
 }
 
-const AUTO_INTRO_FALLBACK = "Thanks for sharing what you do. AppX helps educators run courses through their own branded app and website. Would you like to see how it could work for your business?";
+const AUTO_INTRO_FALLBACK = "Thanks for sharing what you teach. Public course links can be forwarded outside your student group. With a branded learning app, you can give enrolled students a dedicated place to access your courses. Would you like to see how an AppX app could work for your institute?";
+const BROCHURE_INTRO = "Here’s an example you can explore for your courses. It shows how a branded website and learning app can help new students discover your classes and give enrolled students one place to learn.";
 
 async function sendPendingIntro(sb, req, res, userId) {
   const token = req.headers["x-appx-scheduler"];
@@ -464,12 +467,13 @@ module.exports = async (req, res) => {
                             if (error) throw error;
                             assetUrl = data.signedUrl;
                           }
+                          const kitText = [automated ? BROCHURE_INTRO : "", matchedKit.message_text].filter(Boolean).join("\n\n");
                           if (matchedKit.asset_url) {
                             try {
                               assetWaId = await sendMetaWhatsApp({
                                 user,
                                 toPhone: fromPhone,
-                                text: matchedKit.message_text || `AppX ${matchedKit.category_name} Brochure`,
+                                text: kitText || `AppX ${matchedKit.category_name} Brochure`,
                                 mode: "media",
                                 mediaUrl: assetUrl,
                                 mediaType: matchedKit.asset_type || "document",
@@ -479,15 +483,15 @@ module.exports = async (req, res) => {
                               assetWaId = await sendMetaWhatsApp({
                                 user,
                                 toPhone: fromPhone,
-                                text: `${matchedKit.message_text || ""}\n${assetUrl}`.trim(),
+                                text: `${kitText}\n${assetUrl}`.trim(),
                                 mode: "reply",
                               });
                             }
                           } else if (matchedKit.message_text) {
-                            assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: matchedKit.message_text, mode: "reply" });
+                            assetWaId = await sendMetaWhatsApp({ user, toPhone: fromPhone, text: kitText, mode: "reply" });
                           }
                           if (!assetWaId) throw new Error("Meta did not accept the brochure send.");
-                          const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${matchedKit.message_text || (matchedKit.asset_url?.startsWith("storage:") ? "Uploaded brochure" : matchedKit.asset_url)}`;
+                          const assetBody = `[AI Sent ${matchedKit.category_name} Kit] ${kitText || (matchedKit.asset_url?.startsWith("storage:") ? "Uploaded brochure" : matchedKit.asset_url)}`;
                           await sb.from("messages").insert({
                             user_id: userId,
                             lead_id: lead.id,
