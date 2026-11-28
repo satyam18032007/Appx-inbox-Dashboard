@@ -328,6 +328,8 @@
         <div><h1 class="text-xl font-bold text-slate-900">Excel-Style Lead &amp; Response Sheet</h1><p class="text-sm text-slate-500">Edit any cell inline. Download a formatted `.xlsx` workbook anytime.</p></div>
         <div class="flex flex-wrap items-center gap-2">
           <input id="sheet-search" type="text" placeholder="Search name, phone..." class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm w-48" />
+          <label class="text-sm"><input id="sheet-failed-only" type="checkbox" disabled /> Failed delivery only</label>
+          <button id="sheet-download-failed" type="button" disabled class="px-3 py-2 rounded-lg border border-slate-300 bg-white text-sm disabled:opacity-50">Download failed CSV</button>
           <label class="text-sm"><input type="checkbox" id="sheet-due" /> Follow-ups due</label>
           <select id="sheet-sort" aria-label="Lead ordering" class="px-3 py-2 rounded-lg border text-sm">
             <option value="">Default order</option><option value="value">Highest deal value</option><option value="name">Name A–Z</option>
@@ -1039,6 +1041,10 @@
         : "";
       const previousUser = state.user;
       state.user = user; state.leads = leads || [];
+      const failedFilter = document.getElementById("sheet-failed-only");
+      failedFilter.disabled = !campaignDelivery;
+      if (!campaignDelivery) failedFilter.checked = false;
+      document.getElementById("sheet-download-failed").disabled = !campaignDelivery || !retryableFailedLeads().length;
       const currentLead = state.leads.find(lead => lead.id === state.activeLeadId);
       if (currentLead) refreshReplyWindow(currentLead);
       if (JSON.stringify(previousUser) !== JSON.stringify(user) || document.getElementById("app-shell").classList.contains("hidden")) {
@@ -1254,12 +1260,17 @@
         : `<div class="py-8 text-center text-sm text-slate-400">No pending follow-ups right now.</div>`;
     }
 
+    function retryableFailedLeads() {
+      return state.leads.filter(lead => lead.campaign_retryable && !["opted out", "not interested"].includes(String(lead.reply_type || "").toLowerCase()) && lead.status !== "Not Interested");
+    }
+
     function renderSheet() {
       const q = document.getElementById("sheet-search").value.toLowerCase().trim();
       const stFilter = document.getElementById("sheet-filter-status").value;
       const dueOnly = document.getElementById("sheet-due").checked;
       const sort = document.getElementById("sheet-sort").value;
-      const filtered = state.leads.filter(l => (!dueOnly || followupDue(l)) && (stFilter === "All" || l.status === stFilter) && (!q || l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.business_name || "").toLowerCase().includes(q)));
+      const failedOnly = document.getElementById("sheet-failed-only").checked;
+      const filtered = state.leads.filter(l => (!failedOnly || l.campaign_delivery === "failed") && (!dueOnly || followupDue(l)) && (stFilter === "All" || l.status === stFilter) && (!q || l.name.toLowerCase().includes(q) || l.phone.includes(q) || (l.business_name || "").toLowerCase().includes(q)));
       if (sort === "value") filtered.sort((a, b) => Number(b.deal_value || 0) - Number(a.deal_value || 0));
       if (sort === "name") filtered.sort((a, b) => a.name.localeCompare(b.name));
       const opts = ["No Response", "Interested", "Demo Requested", "Demo Booked", "Demo Done", "Follow-up Due", "Sold", "Not Interested"];
@@ -1267,7 +1278,7 @@
         ? filtered.map(l => `
           <tr class="hover:bg-slate-50" data-lead-id="${l.id}">
             <td class="py-2 px-3"><div class="font-medium text-slate-900">${escapeHtml(l.name)}</div><div class="text-xs text-slate-500">${escapeHtml(l.business_name)}</div></td>
-            <td class="py-2 px-3 font-mono text-xs">+${escapeHtml(l.phone)}</td>
+            <td class="py-2 px-3 font-mono text-xs">+${escapeHtml(l.phone)}${l.campaign_delivery === "failed" ? '<div class="text-rose-700">Delivery failed</div>' : ""}</td>
             <td class="py-2 px-3"><span class="text-[11px] px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 font-medium">${escapeHtml(l.reply_type)}</span></td>
             <td class="py-2 px-3 text-xs text-slate-600 truncate max-w-[180px]">${escapeHtml(l.last_message || "—")}</td>
             <td class="py-2 px-3"><select data-field="status" class="sheet-cell-input text-xs font-medium ${STATUS_BADGES[l.status] || ""}">${opts.map(o => `<option value="${o}" ${l.status === o ? "selected" : ""}>${o}</option>`).join("")}</select></td>
@@ -1785,6 +1796,30 @@ Regards,
 
       document.getElementById("followup-queue").addEventListener("click", async e => { const b = e.target.closest("[data-action='open-chat']"); if (b) { switchTab("chat"); await openChatThread(Number(b.dataset.id)); } });
       document.getElementById("sheet-search").addEventListener("input", renderSheet);
+      document.getElementById("sheet-failed-only").addEventListener("change", renderSheet);
+      document.getElementById("sheet-download-failed").addEventListener("click", async () => {
+        try {
+          const date = document.getElementById("campaign-send-date").value;
+          if (!date) return;
+          await refreshData();
+          if (date !== document.getElementById("campaign-send-date").value) return;
+          const quote = value => '"' + String(value ?? "").replace(/^[\s]*[=+@-]/, match => "'" + match).replace(/"/g, '""') + '"';
+          const seen = new Set();
+          const records = retryableFailedLeads().filter(lead => {
+            if (seen.has(lead.phone)) return false;
+            seen.add(lead.phone);
+            return true;
+          });
+          if (!records.length) return showToast("No failed recipients eligible for retry.");
+          const csv = ["name,phone,business_name", ...records.map(lead => [lead.name, lead.phone, lead.business_name].map(quote).join(","))].join("\r\n");
+          const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `appx-failed-${date}.csv`;
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (error) { showToast(error.message); }
+      });
       document.getElementById("sheet-due").addEventListener("change", renderSheet);
       document.getElementById("sheet-sort").addEventListener("change", renderSheet);
       document.getElementById("sheet-filter-status").addEventListener("change", renderSheet);

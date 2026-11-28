@@ -603,6 +603,7 @@ async function getCampaignDateLeads(sb, userId, date) {
   const ids = new Set();
   let campaignSent = 0;
   const latestStatus = new Map();
+  const deliveredIds = new Set();
   const pageSize = 500;
   for (let offset = 0;; offset += pageSize) {
     const { data, error } = await sb.from("messages").select("lead_id,delivery_status")
@@ -614,6 +615,7 @@ async function getCampaignDateLeads(sb, userId, date) {
     for (const row of data) {
       ids.add(row.lead_id);
       latestStatus.set(row.lead_id, String(row.delivery_status || "").toLowerCase());
+      if (["delivered", "read"].includes(latestStatus.get(row.lead_id))) deliveredIds.add(row.lead_id);
     }
     campaignSent += data.length;
     if (data.length < pageSize) break;
@@ -628,12 +630,26 @@ async function getCampaignDateLeads(sb, userId, date) {
   leads.sort((a, b) => Number(Boolean(b.has_responded)) - Number(Boolean(a.has_responded))
     || String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
   const campaignDelivery = { delivered: 0, failed: 0, pending: 0 };
+  const failedIds = [];
   for (const lead of leads) {
     const status = latestStatus.get(lead.id);
+    lead.campaign_delivery = status === "read" || status === "delivered" ? "delivered" : status === "failed" ? "failed" : "pending";
+    if (status === "failed" && !deliveredIds.has(lead.id)) failedIds.push(lead.id);
     if (status === "delivered" || status === "read") campaignDelivery.delivered++;
     else if (status === "failed") campaignDelivery.failed++;
     else campaignDelivery.pending++;
   }
+  const retriedIds = new Set();
+  for (let offset = 0; offset < failedIds.length; offset += 100) {
+    const { data, error } = await sb.from("messages").select("lead_id")
+      .eq("user_id", userId).eq("direction", "outgoing").like("body", "[Template: %")
+      .neq("wa_message_id", "").gte("created_at", new Date(start + 86400000).toISOString())
+      .in("lead_id", failedIds.slice(offset, offset + 100));
+    if (error) throw error;
+    for (const row of data) retriedIds.add(row.lead_id);
+  }
+  const retryableIds = new Set(failedIds.filter(id => !retriedIds.has(id)));
+  for (const lead of leads) lead.campaign_retryable = retryableIds.has(lead.id);
   return { leads, campaignSent, campaignDelivery };
 }
 
