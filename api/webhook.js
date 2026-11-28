@@ -2,6 +2,9 @@ const crypto = require("node:crypto");
 const { getSupabase, normalizePhone, downloadMetaMediaBase64, sendMetaWhatsApp, sendOwnerAlert, getGeminiApiKey, runGeminiSalesAgent, ASSET_BUCKET, selectAssetKit, matchCoachingSubject, COACHING_TEST_MARKER, COACHING_TEST_USED, CAMPAIGN_FOLLOW_UP_MARKER, CAMPAIGN_FEATURES, CAMPAIGN_SUBJECT_QUESTION } = require("./_lib");
 
 function isAutomatedReply(text) {
+  const messagingGreeting = /\bthank(?:s| you) for messaging\s+\p{L}/iu.test(text);
+  const businessGreeting = /\b(?:will|['’]ll) reply (?:to you )?shortly\b|\bhere(?:['’]s| is) a little about us\b/iu.test(text);
+  if (messagingGreeting && businessGreeting) return true;
   return /(?:thank(?:s| you) for (?:contacting|reaching out|making an enquiry)|welcome to |में आपका स्वागत है|tuhada swagat hai|(?:we|i)(?:['’]ll| will) get back to you|automated (?:reply|response|message)|(?:out of (?:office|hours)|currently unavailable)|let us know how we can help you|आपकी कैसे मदद कर सकती है)/iu.test(text);
 }
 
