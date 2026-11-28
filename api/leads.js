@@ -22,6 +22,7 @@ module.exports = async (req, res) => {
     const sb = getSupabase();
 
     if (req.method === "GET") {
+      res.setHeader("Cache-Control", "private, no-store");
       if (req.query.sent_date !== undefined) {
         const results = await getCampaignDateLeads(sb, user.id, req.query.sent_date);
         if (!results) return res.status(400).json({ error: "Choose a valid campaign send date." });

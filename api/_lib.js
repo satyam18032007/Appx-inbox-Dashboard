@@ -602,15 +602,19 @@ async function getCampaignDateLeads(sb, userId, date) {
   const start = midnight.getTime() - 330 * 60000;
   const ids = new Set();
   let campaignSent = 0;
+  const latestStatus = new Map();
   const pageSize = 500;
   for (let offset = 0;; offset += pageSize) {
-    const { data, error } = await sb.from("messages").select("lead_id")
+    const { data, error } = await sb.from("messages").select("lead_id,delivery_status")
       .eq("user_id", userId).eq("direction", "outgoing").like("body", "[Template: %")
-      .neq("wa_message_id", "").neq("delivery_status", "Failed")
+      .neq("wa_message_id", "")
       .gte("created_at", new Date(start).toISOString()).lt("created_at", new Date(start + 86400000).toISOString())
-      .order("id").range(offset, offset + pageSize - 1);
+      .order("created_at").order("id").range(offset, offset + pageSize - 1);
     if (error) throw error;
-    for (const row of data) ids.add(row.lead_id);
+    for (const row of data) {
+      ids.add(row.lead_id);
+      latestStatus.set(row.lead_id, String(row.delivery_status || "").toLowerCase());
+    }
     campaignSent += data.length;
     if (data.length < pageSize) break;
   }
@@ -623,7 +627,14 @@ async function getCampaignDateLeads(sb, userId, date) {
   }
   leads.sort((a, b) => Number(Boolean(b.has_responded)) - Number(Boolean(a.has_responded))
     || String(b.updated_at || "").localeCompare(String(a.updated_at || "")));
-  return { leads, campaignSent };
+  const campaignDelivery = { delivered: 0, failed: 0, pending: 0 };
+  for (const lead of leads) {
+    const status = latestStatus.get(lead.id);
+    if (status === "delivered" || status === "read") campaignDelivery.delivered++;
+    else if (status === "failed") campaignDelivery.failed++;
+    else campaignDelivery.pending++;
+  }
+  return { leads, campaignSent, campaignDelivery };
 }
 
 module.exports = {

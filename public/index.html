@@ -299,7 +299,7 @@
       </div>
 
       <div class="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="text-xs font-medium text-slate-500 uppercase">Total Leads</div><div id="kpi-total" class="text-2xl font-bold text-slate-900 mt-1">0</div><div class="text-xs text-slate-500 mt-1"><span id="kpi-sent">—</span> campaign templates sent</div></div>
+        <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="text-xs font-medium text-slate-500 uppercase">Total Leads</div><div id="kpi-total" class="text-2xl font-bold text-slate-900 mt-1">0</div><div id="kpi-sent" class="text-xs text-slate-500 mt-1"></div><div id="kpi-delivery" class="text-xs text-slate-600 mt-1" aria-live="polite"></div></div>
         <div class="bg-white rounded-xl border border-purple-200 p-4 shadow-sm"><div class="text-xs font-medium text-purple-600 uppercase">Responded</div><div id="kpi-responded" class="text-2xl font-bold text-purple-700 mt-1">0</div><div id="kpi-response-rate" class="text-xs text-slate-500 mt-1">0% reply rate</div></div>
         <div class="bg-white rounded-xl border border-slate-200 p-4 shadow-sm"><div class="text-xs font-medium text-slate-500 uppercase">No Response</div><div id="kpi-no-response" class="text-2xl font-bold text-slate-700 mt-1">0</div><div class="text-xs text-slate-500 mt-1">Not replied yet</div></div>
         <div class="bg-white rounded-xl border border-blue-200 p-4 shadow-sm"><div class="text-xs font-medium text-blue-600 uppercase">Demos</div><div class="flex items-baseline gap-2 mt-1"><span id="kpi-demo-booked" class="text-2xl font-bold text-blue-700">0</span><span class="text-xs text-slate-400">/</span><span id="kpi-demo-done" class="text-lg font-semibold text-indigo-700">0</span></div><div class="text-xs text-slate-500 mt-1">Booked / Done</div></div>
@@ -1030,10 +1030,13 @@
       const revision = aiSettingsRevision;
       const sentDate = document.getElementById("campaign-send-date").value;
       const dateQuery = sentDate ? "&sent_date=" + encodeURIComponent(sentDate) : "";
-      const [{ user }, { leads, campaignSent }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1" + dateQuery)]);
+      const [{ user }, { leads, campaignSent, campaignDelivery }] = await Promise.all([apiFetch("/api/auth"), apiFetch("/api/leads?summary=1" + dateQuery)]);
       if (sentDate !== document.getElementById("campaign-send-date").value) return;
       if (token !== state.token || revision !== aiSettingsRevision) return;
-      document.getElementById("kpi-sent").textContent = campaignSent ?? "—";
+      document.getElementById("kpi-sent").textContent = campaignSent == null ? "" : `${campaignSent} WhatsApp template attempts recorded`;
+      document.getElementById("kpi-delivery").textContent = campaignDelivery
+        ? `Latest per lead: ${campaignDelivery.delivered} delivered/read · ${campaignDelivery.pending} pending · ${campaignDelivery.failed} failed`
+        : "";
       const previousUser = state.user;
       state.user = user; state.leads = leads || [];
       const currentLead = state.leads.find(lead => lead.id === state.activeLeadId);
