@@ -118,8 +118,13 @@ async function sendPendingIntro(sb, req, res, userId) {
   if (historyError) throw historyError;
   if (!user?.ai_enabled || !lead || lead.ai_paused || lead.ai_auto_intro_sent || lead.assets_sent ||
       ["Opted out", "Not interested"].includes(lead.reply_type) || later.length) return res.status(200).json({ sent: false });
+  const { data: recent, error: recentError } = await sb.from("messages").select("direction,body")
+    .eq("user_id", userId).eq("lead_id", lead.id).neq("id", messageId)
+    .lt("created_at", message.created_at).gte("created_at", new Date(Date.parse(message.created_at) - 600000).toISOString())
+    .order("created_at", { ascending: false }).limit(6);
+  if (recentError) throw recentError;
   const decision = await runGeminiSalesAgent({
-    user, lead, history: [], assetKits: [], latestMessage: message.body, automatedIntro: true,
+    user, lead, history: recent.reverse(), assetKits: [], latestMessage: message.body, automatedIntro: true,
   }).catch(() => null);
   const sent = await sendAutomatedIntro(sb, user, lead, decision?.reply || AUTO_INTRO_FALLBACK);
   return res.status(200).json({ sent });
