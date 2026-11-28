@@ -90,7 +90,7 @@ async function sendAutomatedIntro(sb, user, lead, reply) {
   return true;
 }
 
-const AUTO_INTRO_FALLBACK = "Thanks for sharing what you teach. Public course links can be forwarded outside your student group. With a branded learning app, you can give enrolled students a dedicated place to access your courses. Would you like to see how an AppX app could work for your institute?";
+const AUTO_INTRO_FALLBACK = "Thanks for getting back to us. If you offer courses or training, AppX can help you bring them together in your own branded app and website. Would you like to see an example when you're available?";
 const BROCHURE_INTRO = "Here’s an example you can explore for your courses. It shows how a branded website and learning app can help new students discover your classes and give enrolled students one place to learn.";
 
 async function sendPendingIntro(sb, req, res, userId) {
